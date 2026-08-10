@@ -1,13 +1,39 @@
 # Expr for .NET
 
-Expr is an idiomatic C# semantic port of
-[`expr-lang/expr`](https://github.com/expr-lang/expr): a safe, statically checked
-expression language designed to compile once and evaluate many times.
+Expr is a safe, statically checked expression language for modern .NET. Embed
+user-authored rules, filters, policies, and computed values without compiling or
+executing arbitrary C#.
 
-The library targets .NET 10 and C# 14, has no third-party runtime dependencies,
-and exposes the full pipeline: parsing, public immutable syntax trees, static
-checking, semantic patching, optimization, bytecode compilation, and bounded
-virtual-machine evaluation.
+- Compile once and evaluate concurrently with isolated runtime state.
+- Validate names, types, functions, and return values before execution.
+- Work with an immutable, public AST that can be walked, printed, and rewritten.
+- Bound evaluation with work, memory, collection, stack, regex, and cancellation limits.
+- Run on Native AOT and trimmed applications with reflection-free environment schemas.
+- Ship a single library with no third-party runtime dependencies.
+
+Expr targets .NET 10 and C# 14.
+
+## Install
+
+While the package is pre-release:
+
+```sh
+dotnet add package Expr --prerelease
+```
+
+## Quick start
+
+For a one-off expression with no host environment:
+
+```csharp
+using Expr;
+
+object? result = ExprEngine.Evaluate("all([2, 3, 5], # > 0)");
+// result is true
+```
+
+For repeated evaluation, describe the values visible to the expression, compile
+once, and reuse the resulting `CompiledExpression`:
 
 ```csharp
 using System.Collections.Generic;
@@ -21,65 +47,130 @@ var schema = new ExprEnvironmentSchemaBuilder<OrderContext>()
     .ArrayMember("prices", static value => value.Prices, ExprTypes.Float)
     .Build();
 
-ExprConfiguration configuration = ExprConfiguration.Default.WithEnvironment(schema);
+ExprConfiguration configuration = ExprConfiguration.Default
+    .WithEnvironment(schema)
+    .WithExpectedType(ExprTypes.Boolean);
+
 CompiledExpression expression = ExprEngine.Compile(
     "customer == 'Ada' && sum(prices) >= 100.0",
     configuration);
 
-object? result = expression.Run(new OrderContext("Ada", [45.0, 60.0]));
-// result is true
+bool accepted = (bool)expression.Run(
+    new OrderContext("Ada", [45.0, 60.0]))!;
+// accepted is true
 
-public sealed record OrderContext(string Customer, IReadOnlyList<double> Prices);
+public sealed record OrderContext(
+    string Customer,
+    IReadOnlyList<double> Prices);
 ```
 
-Build schemas explicitly for Native AOT and trimming. Reflection-based schema
-discovery is available for conventional applications and clearly annotated at
-the API boundary.
+The schema is strict: misspelled names and invalid operations fail during
+`Compile`, not in a later production evaluation. Explicit schemas are also safe
+for Native AOT and trimming. Conventional applications can instead create a
+cached reflection-based schema with `ExprEnvironmentSchema.Reflect<T>()`.
+
+## Add application functions
+
+Functions declare their Expr-visible signature independently of their runtime
+implementation, so calls remain statically checked:
+
+```csharp
+using System;
+using Expr;
+using Expr.Configuration;
+using Expr.Runtime;
+using Expr.Types;
+
+var isPreferred = new ExprFunction(
+    "isPreferred",
+    [new ExprFunctionOverload([ExprTypes.String], ExprTypes.Boolean)],
+    static arguments => ((string)arguments[0]!).StartsWith("vip-", StringComparison.Ordinal));
+
+ExprConfiguration configuration = ExprConfiguration.Default
+    .WithFunction(isPreferred);
+
+CompiledExpression expression = ExprEngine.Compile(
+    "isPreferred('vip-123')",
+    configuration);
+```
 
 ## Inspect and adapt the AST
 
-The parsed and optimized trees remain first-class library artifacts. Consumers
-can walk, print, or immutably replace nodes before compilation:
+Parsing, traversal, canonical printing, rewriting, static checking, compilation,
+and execution are all public APIs:
 
 ```csharp
-using System.Collections.Generic;
+using System;
 using Expr;
 using Expr.Syntax;
 
 SyntaxTree tree = ExprEngine.Parse("price * quantity");
-var visited = new List<SyntaxNode>();
-SyntaxWalker.Walk(tree.Root, visited.Add);
 
-SyntaxNode replacement = new IntegerNode(42, tree.Root.Location);
-CompiledExpression expression = ExprEngine.Compile(
-    new SyntaxTree(replacement, tree.Source));
+foreach (SyntaxNode node in SyntaxWalker.Traverse(tree.Root))
+{
+    Console.WriteLine(node.GetType().Name);
+}
+
+SyntaxNode rewritten = new RenamePrice().Visit(tree.Root);
+Console.WriteLine(SyntaxPrinter.Print(rewritten));
+// unitPrice * quantity
+
+sealed class RenamePrice : SyntaxRewriter
+{
+    protected override SyntaxNode VisitNode(SyntaxNode node) =>
+        node is IdentifierNode { Name: "price" } identifier
+            ? identifier with { Name = "unitPrice" }
+            : node;
+}
 ```
 
-`CompiledExpression` exposes its final `SyntaxTree`, `SemanticModel`, and
-immutable bytecode `Program` for advanced integrations.
+`CompiledExpression` exposes its checked `SyntaxTree`, `SemanticModel`, and
+immutable bytecode `Program` for integrations that need more than evaluation.
 
-## Compatibility and confidence
+## Bound untrusted evaluations
 
-- Semantics are checked against a pinned upstream Go revision by a differential
-  oracle, with optimization enabled and disabled.
-- All 71 upstream built-ins and all 84 VM opcodes have direct coverage.
-- Deterministic generated-expression properties and a standalone fuzz harness
-  protect parsing, printing, and optimizer equivalence.
-- The complete pinned generated suite (43,689 expressions) and CrowdSec suite
-  (673 expressions) compile and run as executable parity tests.
-- Evaluation has explicit instruction, memory, stack, call-depth, regex, and
-  cancellation controls.
-- Release builds enforce nullable analysis, all .NET analyzers, formatting,
-  XML documentation, package validation, and warnings as errors.
-- The Attractor semport pipeline and append-only ledger make upstream changes
-  reviewable and repeatable.
+Every invocation accepts a cancellation token and independent runtime budgets:
 
-The project is pre-1.0 while its public API matures; pinned upstream feature
-parity is enforced as a release gate. See the [feature parity contract](docs/parity.md),
-[compatibility policy](docs/compatibility.md), [architecture](docs/architecture.md),
-and [security model](docs/security-model.md).
+```csharp
+using System;
+using Expr.Execution;
 
-## Build
+object? result = expression.Run(
+    environment,
+    new ExprEvaluationOptions
+    {
+        WorkBudget = 100_000,
+        MemoryBudget = 1_000_000,
+        MaximumCollectionLength = 10_000,
+        RegularExpressionTimeout = TimeSpan.FromMilliseconds(100),
+    },
+    cancellationToken);
+```
+
+See the
+[security model](https://github.com/TheFellow/expr-dotnet/blob/main/docs/security-model.md)
+before accepting expressions from an untrusted boundary.
+
+## Where to go next
+
+- [Expr language definition](https://expr-lang.org/docs/language-definition/)
+  covers literals, operators, collections, predicates, and built-ins.
+- [Native AOT sample](https://github.com/TheFellow/expr-dotnet/blob/main/samples/Expr.NativeAot/Program.cs)
+  demonstrates a fully reflection-free schema and explicit evaluation budgets.
+- [Compatibility policy](https://github.com/TheFellow/expr-dotnet/blob/main/docs/compatibility.md)
+  describes language and .NET integration behavior.
+- [Security model](https://github.com/TheFellow/expr-dotnet/blob/main/docs/security-model.md)
+  and [security review](https://github.com/TheFellow/expr-dotnet/blob/main/docs/security-review.md)
+  document the trust boundary and deployment contract.
+- [Architecture](https://github.com/TheFellow/expr-dotnet/blob/main/docs/architecture.md)
+  explains the parser-to-bytecode pipeline.
+- [Benchmarks](https://github.com/TheFellow/expr-dotnet/blob/main/docs/benchmarks.md)
+  documents the reproducible performance suite.
+
+The project is pre-1.0 while its public API matures. Compatibility with the Expr
+language is continuously checked against its upstream test corpus.
+
+## Build and contribute
 
 ```sh
 dotnet restore expr-dotnet.slnx
@@ -88,9 +179,11 @@ dotnet build expr-dotnet.slnx --configuration Release --no-restore
 dotnet test expr-dotnet.slnx --configuration Release --no-build --no-restore
 ```
 
-Contribution and semport workflows are documented in [CONTRIBUTING.md](CONTRIBUTING.md)
-and [semport/README.md](semport/README.md).
+See [CONTRIBUTING.md](https://github.com/TheFellow/expr-dotnet/blob/main/CONTRIBUTING.md)
+for the development workflow. Maintainers can find the publication process in
+[docs/releasing.md](https://github.com/TheFellow/expr-dotnet/blob/main/docs/releasing.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+MIT. See [LICENSE](https://github.com/TheFellow/expr-dotnet/blob/main/LICENSE)
+and [NOTICE](https://github.com/TheFellow/expr-dotnet/blob/main/NOTICE).

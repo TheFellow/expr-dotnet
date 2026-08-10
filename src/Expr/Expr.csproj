@@ -2,11 +2,11 @@
   <PropertyGroup>
     <AssemblyName>Expr</AssemblyName>
     <RootNamespace>Expr</RootNamespace>
-    <Description>A faithful, safe, and fast C# semantic port of expr-lang/expr.</Description>
+    <Description>A safe, statically checked expression language for modern .NET with a public AST and bounded bytecode runtime.</Description>
     <PackageId>Expr</PackageId>
     <Authors>TheFellow contributors</Authors>
     <Copyright>Copyright (c) 2026 TheFellow contributors</Copyright>
-    <PackageTags>expression;expression-language;compiler;bytecode;interpreter;rules</PackageTags>
+    <PackageTags>expression;expression-language;compiler;bytecode;interpreter;rules;rules-engine;ast;dotnet</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/TheFellow/expr-dotnet</PackageProjectUrl>
