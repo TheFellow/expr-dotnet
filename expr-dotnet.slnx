@@ -2,8 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/Expr/Expr.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Expr.Benchmarks/Expr.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Expr.Tests/Expr.Tests.csproj" />
   </Folder>
 </Solution>
-
