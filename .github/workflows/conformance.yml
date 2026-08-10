@@ -22,15 +22,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Expr.NET
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Checkout pinned Expr oracle source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: expr-lang/expr
           ref: 4b31df3a2e0eefec04c017a82a00e0f08541d3e4
           path: inspiration/expr
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: tools/Expr.Oracle/go.mod
           cache-dependency-path: tools/Expr.Oracle/go.sum

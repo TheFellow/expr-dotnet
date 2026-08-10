@@ -13,21 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Checkout pinned Expr oracle source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: expr-lang/expr
           ref: 4b31df3a2e0eefec04c017a82a00e0f08541d3e4
           path: inspiration/expr
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - name: Setup Go oracle toolchain
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: tools/Expr.Oracle/go.mod
           cache-dependency-path: tools/Expr.Oracle/go.sum
