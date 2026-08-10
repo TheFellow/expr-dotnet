@@ -37,8 +37,22 @@ public sealed class ExprChecker
     /// <exception cref="ExprCheckException">Static checking fails.</exception>
     public ExprSemanticModel Check(SyntaxTree tree, ExprConfiguration? configuration = null)
     {
+        return CheckCore(tree, configuration ?? ExprConfiguration.Default, validateExpectedType: true);
+    }
+
+    internal ExprSemanticModel CheckForOptimization(SyntaxTree tree, ExprConfiguration configuration)
+    {
+        return CheckCore(tree, configuration, validateExpectedType: false);
+    }
+
+    private ExprSemanticModel CheckCore(
+        SyntaxTree tree,
+        ExprConfiguration configuration,
+        bool validateExpectedType)
+    {
         ArgumentNullException.ThrowIfNull(tree);
-        this.configuration = configuration ?? ExprConfiguration.Default;
+        ArgumentNullException.ThrowIfNull(configuration);
+        this.configuration = configuration;
         ValidateConfiguration(this.configuration);
 
         SyntaxTree current = tree;
@@ -75,7 +89,11 @@ public sealed class ExprChecker
             throw new ExprCheckException(state.Diagnostic);
         }
 
-        ValidateExpectedResult(state.Model.ResultType);
+        if (validateExpectedType)
+        {
+            ValidateExpectedResult(state.Model.ResultType);
+        }
+
         return state.Model;
     }
 
