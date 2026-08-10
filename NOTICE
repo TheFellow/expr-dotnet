@@ -1,0 +1,9 @@
+Expr.NET is a semantic port of expr-lang/expr.
+
+The upstream project is Copyright (c) 2018 Anton Medvedev and is available at
+https://github.com/expr-lang/expr under the MIT License. This distribution
+retains the upstream copyright and license notice in LICENSE.
+
+Expr.NET is an independent community project and is not presently affiliated
+with or endorsed by the expr-lang maintainers.
+

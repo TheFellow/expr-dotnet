@@ -1,0 +1,14 @@
+bin/
+obj/
+artifacts/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+TestResults/
+.ai/
+.fkyeah-cache/
+attractor-logs/
+inspiration/expr/
+
