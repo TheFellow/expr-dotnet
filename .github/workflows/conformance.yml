@@ -1,0 +1,52 @@
+name: Conformance oracle
+
+on:
+  pull_request:
+    paths:
+      - "conformance/**"
+      - "tools/Expr.Oracle/**"
+      - "tests/Expr.Tests/Conformance/**"
+      - ".github/workflows/conformance.yml"
+  push:
+    paths:
+      - "conformance/**"
+      - "tools/Expr.Oracle/**"
+      - "tests/Expr.Tests/Conformance/**"
+      - ".github/workflows/conformance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Expr.NET
+        uses: actions/checkout@v4
+      - name: Checkout pinned Expr oracle source
+        uses: actions/checkout@v4
+        with:
+          repository: expr-lang/expr
+          ref: 4b31df3a2e0eefec04c017a82a00e0f08541d3e4
+          path: inspiration/expr
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/Expr.Oracle/go.mod
+          cache-dependency-path: tools/Expr.Oracle/go.sum
+      - name: Test and vet oracle
+        working-directory: tools/Expr.Oracle
+        run: |
+          go test -race -count=1 ./...
+          go vet ./...
+          go mod verify
+      - name: Validate corpus and pinned outcomes
+        run: |
+          python3 conformance/scripts/test_validate.py
+          python3 conformance/scripts/validate.py
+      - name: Prove deterministic regeneration
+        shell: bash
+        run: |
+          regenerated="$(mktemp)"
+          python3 conformance/scripts/refresh_expected.py > "$regenerated"
+          cmp conformance/corpus/upstream.jsonl "$regenerated"
