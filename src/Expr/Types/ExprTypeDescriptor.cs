@@ -59,6 +59,35 @@ public sealed record PrimitiveTypeDescriptor : ExprTypeDescriptor
     public Type? ClrType { get; }
 }
 
+/// <summary>Describes a value that may be either <see langword="null"/> or a specific Expr type.</summary>
+public sealed record NullableTypeDescriptor : ExprTypeDescriptor
+{
+    /// <summary>Initializes a nullable descriptor.</summary>
+    /// <param name="underlyingType">The non-null semantic type.</param>
+    public NullableTypeDescriptor(ExprTypeDescriptor underlyingType)
+        : base(
+            (underlyingType ?? throw new ArgumentNullException(nameof(underlyingType))).Kind,
+            $"{underlyingType.DisplayName}?")
+    {
+        if (underlyingType.Kind is ExprTypeKind.Nil || underlyingType is NullableTypeDescriptor)
+        {
+            throw new ArgumentException("A nullable type requires a non-null, non-nullable underlying type.", nameof(underlyingType));
+        }
+
+        UnderlyingType = underlyingType;
+    }
+
+    /// <summary>Gets the non-null semantic type.</summary>
+    public ExprTypeDescriptor UnderlyingType { get; }
+
+    /// <inheritdoc />
+    public override bool IsEquivalentTo(ExprTypeDescriptor other) =>
+        other.Kind is ExprTypeKind.Any ||
+        (other is NullableTypeDescriptor nullable
+            ? UnderlyingType.IsEquivalentTo(nullable.UnderlyingType)
+            : UnderlyingType.IsEquivalentTo(other));
+}
+
 /// <summary>Describes an ordered collection and its element type.</summary>
 public sealed record ArrayTypeDescriptor : ExprTypeDescriptor
 {

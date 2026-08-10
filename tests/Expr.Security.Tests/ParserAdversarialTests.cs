@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Expr.Configuration;
 using Expr.Syntax;
 using Xunit;
 
@@ -21,6 +22,38 @@ public sealed class ParserAdversarialTests
         "0xFFFFFFFFFFFFFFFFF",
         "/* unterminated",
     };
+
+    public static TheoryData<string> OversizedSources => new()
+    {
+        new string(' ', 65),
+        string.Concat("/*", new string('x', 65), "*/"),
+        new string('a', 65),
+        string.Concat("'", new string('x', 65), "'"),
+    };
+
+    [Theory]
+    [MemberData(nameof(OversizedSources))]
+    public void Oversized_whitespace_comments_identifiers_and_strings_are_rejected_before_lexing(string source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        var options = new SyntaxParserOptions { MaximumSourceLength = 32 };
+
+        SyntaxException exception = Assert.Throws<SyntaxException>(() =>
+            new SyntaxParser().Parse(source, options));
+
+        Assert.Contains("maximum source length of 32", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Facade_configuration_applies_the_source_length_limit()
+    {
+        ExprConfiguration configuration = ExprConfiguration.Default.WithMaximumSourceLength(3);
+
+        SyntaxException exception = Assert.Throws<SyntaxException>(() =>
+            ExprEngine.Parse("true", configuration));
+
+        Assert.Contains("maximum source length of 3", exception.Message, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void Deep_parentheses_are_rejected_at_the_configured_parse_depth()

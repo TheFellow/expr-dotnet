@@ -16,7 +16,6 @@ namespace Expr.Execution;
 
 internal static class ExprExecutionOperations
 {
-    private static readonly ConcurrentDictionary<(Type Type, string Name), MemberInfo?> Members = new();
     private static readonly ConcurrentDictionary<MethodInfo, MethodInvoker> MethodInvokers = new();
 
     internal static object? FetchEnvironment(object? environment, string name)
@@ -43,7 +42,7 @@ internal static class ExprExecutionOperations
             return map.TryGetValue(name, out object? mapped) ? mapped : null;
         }
 
-        return FetchNamedMember(environment, name, allowMethod: true);
+        throw Error($"cannot fetch {name} from {TypeName(environment)}");
     }
 
     internal static object? FetchBound(object? target, ExprMemberOperand operand)
@@ -117,11 +116,6 @@ internal static class ExprExecutionOperations
         if (ExprCollections.TryAsMap(target, out IExprMap? map) && map is not null)
         {
             return map.TryGetValue(key, out object? value) ? value : null;
-        }
-
-        if (key is string name)
-        {
-            return FetchNamedMember(target, name, allowMethod: true);
         }
 
         throw Error($"cannot fetch {Display(key)} from {TypeName(target)}");
@@ -283,6 +277,26 @@ internal static class ExprExecutionOperations
         throw Error($"cannot slice {Display(fromValue)}");
     }
 
+    internal static ulong SliceAllocationCost(object? value, object? fromValue, object? toValue)
+    {
+        long from = ExprValue.ToInt64(fromValue);
+        long to = ExprValue.ToInt64(toValue);
+        int length = TryGetBytes(value, out ReadOnlyMemory<byte> bytes)
+            ? bytes.Length
+            : ExprValue.StorageLength(value);
+        long start = NormalizeSliceIndex(from, length);
+        long end = NormalizeSliceIndex(to, length);
+        if (start > end)
+        {
+            start = end;
+        }
+
+        ulong resultLength = (ulong)(end - start);
+        return value is string
+            ? checked(resultLength + (ulong)length)
+            : resultLength;
+    }
+
     internal static bool DynamicMatch(
         object? input,
         object? pattern,
@@ -410,56 +424,6 @@ internal static class ExprExecutionOperations
         }
     }
 
-    private static object? FetchNamedMember(object target, string name, bool allowMethod)
-    {
-        MemberInfo? member = Members.GetOrAdd(
-            (target.GetType(), name),
-            static pair => FindMember(pair.Type, pair.Name));
-        return member switch
-        {
-            PropertyInfo property when property.GetMethod is MethodInfo getter =>
-                InvokeMethod(target, getter, []),
-            FieldInfo field => field.GetValue(target),
-            MethodInfo method when allowMethod => new BoundMethod(target, method),
-            _ => throw Error($"cannot fetch {name} from {TypeName(target)}"),
-        };
-    }
-
-    private static MemberInfo? FindMember(Type type, string name)
-    {
-        foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
-        {
-            if (property.GetMethod is null || property.GetIndexParameters().Length is not 0)
-            {
-                continue;
-            }
-
-            ExprMemberAttribute? attribute = property.GetCustomAttribute<ExprMemberAttribute>(inherit: true);
-            if (attribute?.Ignore is not true &&
-                string.Equals(attribute?.Name ?? property.Name, name, StringComparison.Ordinal))
-            {
-                return property;
-            }
-        }
-
-        foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public))
-        {
-            ExprMemberAttribute? attribute = field.GetCustomAttribute<ExprMemberAttribute>(inherit: true);
-            if (attribute?.Ignore is not true &&
-                string.Equals(attribute?.Name ?? field.Name, name, StringComparison.Ordinal))
-            {
-                return field;
-            }
-        }
-
-        return type.GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .FirstOrDefault(method =>
-                !method.IsSpecialName &&
-                !method.ContainsGenericParameters &&
-                method.DeclaringType != typeof(object) &&
-                string.Equals(method.Name, name, StringComparison.Ordinal));
-    }
-
     private static object? ReadMember(object target, MemberInfo member) => member switch
     {
         PropertyInfo property when property.GetMethod is MethodInfo getter => InvokeMethod(target, getter, []),
@@ -520,7 +484,7 @@ internal static class ExprExecutionOperations
         {
             if (targetType.IsValueType && Nullable.GetUnderlyingType(targetType) is null)
             {
-                return Activator.CreateInstance(targetType);
+                return Array.CreateInstance(targetType, 1).GetValue(0);
             }
 
             return null;
@@ -613,12 +577,7 @@ internal static class ExprExecutionOperations
 
     private static string TypeName(object? value) => value?.GetType().FullName ?? "nil";
 
-    private static string Display(object? value) => value switch
-    {
-        null => "nil",
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? string.Empty,
-    };
+    private static string Display(object? value) => ExprDisplay.Value(value);
 
     private static ExprRuntimeException Error(string message, Exception? innerException = null) =>
         innerException is null

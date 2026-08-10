@@ -5,6 +5,7 @@ using System.Linq;
 using Expr.Builtins;
 using Expr.Patching;
 using Expr.Runtime;
+using Expr.Syntax;
 using Expr.Types;
 
 namespace Expr.Configuration;
@@ -26,6 +27,7 @@ public sealed class ExprConfiguration
         bool optimize,
         bool shortCircuit,
         bool disableIfOperator,
+        int maximumSourceLength,
         int maximumNodeCount,
         int maximumCheckDepth,
         ulong memoryBudget,
@@ -44,6 +46,7 @@ public sealed class ExprConfiguration
         Optimize = optimize;
         ShortCircuit = shortCircuit;
         DisableIfOperator = disableIfOperator;
+        MaximumSourceLength = maximumSourceLength;
         MaximumNodeCount = maximumNodeCount;
         MaximumCheckDepth = maximumCheckDepth;
         MemoryBudget = memoryBudget;
@@ -65,6 +68,7 @@ public sealed class ExprConfiguration
         true,
         true,
         false,
+        SyntaxParserOptions.DefaultMaximumSourceLength,
         DefaultMaximumNodeCount,
         1_024,
         DefaultMemoryBudget,
@@ -99,6 +103,9 @@ public sealed class ExprConfiguration
 
     /// <summary>Gets the maximum syntax node count, or zero for no limit.</summary>
     public int MaximumNodeCount { get; }
+
+    /// <summary>Gets the maximum source length in UTF-16 code units, or zero for no limit.</summary>
+    public int MaximumSourceLength { get; }
 
     /// <summary>Gets the maximum checker traversal depth.</summary>
     public int MaximumCheckDepth { get; }
@@ -172,6 +179,15 @@ public sealed class ExprConfiguration
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maximum);
         return Copy(maximumNodeCount: maximum);
+    }
+
+    /// <summary>Returns a configuration with the requested source-length budget.</summary>
+    /// <param name="maximum">The maximum UTF-16 code units, or zero for no limit.</param>
+    /// <returns>A new configuration.</returns>
+    public ExprConfiguration WithMaximumSourceLength(int maximum)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maximum);
+        return Copy(maximumSourceLength: maximum);
     }
 
     /// <summary>Returns a configuration with the requested checker depth limit.</summary>
@@ -259,12 +275,11 @@ public sealed class ExprConfiguration
     public ExprConfiguration WithConstantFunction(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        bool isRegisteredFunction = Functions.ContainsKey(name);
-        bool isEnvironmentFunction = Environment?.TryGetMember(name, out ExprEnvironmentMember? member) is true &&
-            member?.Type.Kind is ExprTypeKind.Function;
-        if (!isRegisteredFunction && !isEnvironmentFunction)
+        if (!Functions.ContainsKey(name))
         {
-            throw new ArgumentException($"Constant expression function {name} is not registered.", nameof(name));
+            throw new ArgumentException(
+                $"Constant expression function {name} must be registered with WithFunction.",
+                nameof(name));
         }
 
         return Copy(constantFunctions: Add(ConstantFunctions, name));
@@ -332,6 +347,7 @@ public sealed class ExprConfiguration
         bool? optimize = null,
         bool? shortCircuit = null,
         bool? disableIfOperator = null,
+        int? maximumSourceLength = null,
         int? maximumNodeCount = null,
         int? maximumCheckDepth = null,
         ulong? memoryBudget = null,
@@ -349,6 +365,7 @@ public sealed class ExprConfiguration
             optimize ?? Optimize,
             shortCircuit ?? ShortCircuit,
             disableIfOperator ?? DisableIfOperator,
+            maximumSourceLength ?? MaximumSourceLength,
             maximumNodeCount ?? MaximumNodeCount,
             maximumCheckDepth ?? MaximumCheckDepth,
             memoryBudget ?? MemoryBudget,

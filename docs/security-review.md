@@ -1,149 +1,175 @@
-# Security Review: Syntax and Runtime Foundations
+# Final Security Review
 
 Review date: 2026-08-09
 
-Reviewed port scope: `Expr.Syntax`, `Expr.Runtime`, and `Expr.Types`
+Reviewed scope: the public parse, check, optimize, compile, and evaluation
+pipeline; standard built-ins; runtime collections and environment schemas;
+bytecode validation; diagnostics; serialization; regular expressions; and the
+Native AOT deployment path.
 
-Upstream reference: `expr-lang/expr` at `4b31df3a2e0eefec04c017a82a00e0f08541d3e4`
+Upstream reference: `expr-lang/expr` at
+`4b31df3a2e0eefec04c017a82a00e0f08541d3e4`.
 
 ## Verdict
 
-The syntax and runtime foundation has concrete controls for parser exhaustion,
-safe AST traversal, bounded deep equality, immutable input snapshots, explicit
-environment member exposure, invariant numeric parsing, and value-safe error
-messages. The narrow Native AOT smoke vertical now registers and reads typed
-environment members, adapts generic read-only collections, performs deep
-equality, and publishes and executes without trim or AOT warnings.
+Expr.NET's current alpha is suitable for evaluating untrusted expression text
+when the host follows the supported deployment contract below. The release
+controls in `security-model.md` are implemented and covered by adversarial
+tests: source, syntax, checker, execution, collection, regular-expression, and
+serialization limits are explicit; bytecode is validated before execution;
+reflection metadata and unbound CLR member discovery are denied; evaluation
+state is isolated; and diagnostics do not stringify arbitrary host values.
 
-This is **not** a release security sign-off. The evaluator, bytecode verifier,
-work and allocation budget, cancellation, regular-expression engine, and JSON
-limits are not implemented in this reviewed vertical. Their release gates
-remain open.
+This is a library security review, not a process-isolation claim. Host accessors
+and custom functions are trusted application code. The interpreter cannot
+preempt a callback while that callback is running, account for memory retained
+by the host, or make a mutable host collection thread-safe.
 
-## Evidence added by this review
+## Supported deployment contract
 
-The isolated `tests/Expr.Security.Tests` project exercises deterministic
-adversarial boundaries without intentionally risking `StackOverflowException`
-or out-of-memory termination:
+For untrusted expressions, a host must:
 
-- parse depth is rejected at 32 levels and a 2,048-element array is rejected at
-  128 nodes;
-- malformed UTF-16, Unicode escapes, numeric literals, and comments produce
-  structured syntax diagnostics;
-- a 25,000-level AST is walked iteratively, while the recursive rewriter rejects
-  at its configured depth;
-- deep equality terminates on cycles and rejects at its 10,000-level limit;
-- hostile generic collections prove metadata and keyed lookup do not enumerate
-  unnecessarily;
-- syntax nodes and Expr-owned collections snapshot mutable constructor input;
-- reflection-free schemas expose only explicitly registered members, and the
-  reflection-based schema excludes non-public, static, indexer, and ignored
-  members;
-- culture, independent parser concurrency, shared immutable tree traversal, and
-  schema reuse are covered; and
-- runtime diagnostics do not invoke arbitrary host `ToString()` methods or
-  include environment values.
+1. retain the default source, syntax, checker, work, memory, stack, scope,
+   collection, serialization, and regular-expression limits or replace them
+   with deliberate finite limits;
+2. use an explicit `ExprEnvironmentSchemaBuilder<TEnvironment>` schema and
+   explicit `ExprTypeDescriptor` values;
+3. expose only trusted accessors, functions, object types, and read-only
+   collection views;
+4. pass a cancellation token for request-scoped interruption; and
+5. treat reflection-backed schemas, inferred CLR types, dynamic collection
+   discovery, and arbitrary host callbacks as trusted-host features rather than
+   sandbox primitives.
 
-The zero-package `samples/Expr.NativeAot` application registers four real typed
-environment members with explicit Expr type descriptors, reads those members,
-parses and walks syntax, adapts `IReadOnlyList<long>` and
-`IReadOnlyDictionary<string, long>` without reflection, and runs
-`ExprValue.Equal` over both adapted collections. No warning was suppressed to
-obtain a green publish.
+Setting a memory or syntax limit to zero deliberately disables that limit.
+Increasing limits also increases the maximum work or allocation accepted from
+one expression.
+
+## Evidence
+
+The standalone `Expr.Security.Tests` project exercises the public API and the
+same production assembly shipped to consumers. Its corpus includes:
+
+- deep and wide parser inputs, malformed UTF-16 and escapes, numeric overflow,
+  unterminated comments, parser reuse, culture changes, and concurrent parses;
+- iterative traversal of a 25,000-level tree and bounded recursive rewriting;
+- exact memory-budget boundaries, instruction-work exhaustion, cancellation,
+  stack and collection limits, predicate iteration, and hostile collection
+  counts;
+- malformed opcodes, operands, jumps, source ranges, stacks, scopes, constants,
+  variables, calls, and profile boundaries;
+- constant and dynamic regular expressions, rejected backreferences, pattern
+  length limits, non-backtracking execution, and explicit timeouts;
+- explicit-schema allowlists, ignored members, forbidden `Type` and reflection
+  metadata, non-strict dictionary lookup, denied unbound CLR discovery, and
+  repeated dynamic lookup misses;
+- arbitrary-host-value diagnostic and disassembly paths that prove `ToString()`
+  is neither called nor disclosed;
+- cyclic and deeply nested equality, serialization cycles, JSON depth and
+  allocation limits, output escaping amplification, malformed Base64, and
+  rejection of POCO serialization without invoking getters; and
+- immutable snapshots, live-adapter boundaries, schema reuse, and concurrent
+  compiled-expression evaluation.
+
+The main suite additionally covers all 84 VM opcodes, every predicate family,
+all standard built-ins, optimized/unoptimized equivalence, deterministic
+generated-expression properties, and pinned upstream differential cases.
 
 ## Control disposition
 
-| Threat-model control | Status for reviewed scope | Evidence and residual work |
+| Threat-model control | Disposition | Evidence and boundary |
 | --- | --- | --- |
-| Parser stack or node exhaustion | Closed for parser entry points | `SyntaxParserOptions` enforces node and parse-depth limits; deep and wide adversarial tests cover rejection. Hosts can explicitly disable the node limit with zero. |
-| Evaluation allocation exhaustion | Open | No evaluator-wide work/allocation meter exists yet. Expr-owned arrays/maps snapshot inputs, but that is not an execution budget. Range, collection, string, Base64, JSON, and predicate charges still require evaluator tests. |
-| Infinite interpreter execution | Open | There is no reviewed VM in this vertical. Cancellation and structurally bounded backward jumps require separate evidence. |
-| Catastrophic regular expressions | Open | No regex evaluator has been reviewed. RE2-subset validation, non-backtracking execution, timeout defense, and an attack corpus are still required. |
-| Reflection escape | Partially closed | Explicitly typed schema members and generic collection wrappers are reflection-free and verified under Native AOT. Inferred member types, reflected schemas, and `ExprDynamicCollections` are distinct APIs with honest trim/dynamic-code annotations. Reflected schemas omit non-public/static/indexer/ignored members. Reflected public members returning `Type` or reflection objects are not yet rejected. |
-| Host mutation | Partially closed | Syntax containers, byte literals, `ExprArray`, and `ExprMap` defensively copy constructor inputs. CLR collection adapters are live read-only access views, and custom function side effects have not been reviewed. |
-| Ambient-state surprises | Partially closed | Numeric syntax parsing is invariant-culture and string equality is ordinal. Timezone, clock injection, and evaluator-wide culture behavior remain open. |
-| Numeric edge cases | Partially closed | Strict conversion and NaN ordering behavior have foundation tests. Checked host conversions, arithmetic overflow, divide/modulo by zero, and range allocation require compiler/VM evidence. |
-| Serialization amplification | Open | JSON evaluation depth, type-materialization, recursion, and output-size controls do not yet exist in the reviewed surface. |
-| Error disclosure | Partially closed | Adversarial objects are not stringified and unknown-member errors omit environment values. Some runtime errors include CLR full type names; the final diagnostic policy must decide whether those names are acceptable. |
-| Concurrency corruption | Partially closed | Independent parsers, immutable syntax trees, and immutable schemas are exercised concurrently. `SyntaxParser` itself is stateful and is not claimed to be safe for simultaneous calls. Compiled-program/evaluator isolation remains open. |
+| Source, parser, and checker exhaustion | Closed | Finite source, token, node, parse-depth, and check-depth limits reject before later pipeline stages. Deep/wide and malformed inputs have adversarial coverage. |
+| Evaluation allocation exhaustion | Closed | VM collection and string allocations are preflighted; allocating built-ins have finite internal limits, pre-invocation estimators, and VM charges. Budget units are conservative semantic units, not exact CLR heap bytes. Environment inputs are not charged. |
+| Infinite interpreter execution | Closed | Every instruction consumes work, backward jumps and host-call boundaries observe cancellation, and stack/scope/collection growth is bounded. A running host callback remains outside interpreter control. |
+| Catastrophic regular expressions | Closed | Constant and dynamic patterns use culture-invariant `RegexOptions.NonBacktracking`, finite pattern limits, and a timeout. Unsupported backreferences are rejected. |
+| Reflection escape | Closed for the supported contract | Runtime `any` fetches do not discover CLR members, non-strict roots require dictionary/map lookup, `get` does not reflect over host objects, serialization accepts Expr values rather than POCO discovery, and `Type`/reflection metadata is forbidden. Explicit object descriptors and reflected schemas authorize their declared public surface by host choice. |
+| Host mutation | Closed within the interpreter | There is no assignment syntax and Expr-owned syntax/collection values snapshot constructor input. Generic read-only adapters are live views, so mutation and synchronization of the underlying host object remain host responsibilities. |
+| Ambient-state surprises | Closed with documented inputs | Numeric conversion is invariant and string rules are ordinal. Clock and timezone are injectable; using the system clock or local mutable host state is an explicit host choice. |
+| Numeric edge cases | Closed | Overflow, NaN/infinity, divide/modulo-by-zero, shifts, range sizing, and host conversions have direct or differential coverage. |
+| Serialization amplification | Closed | JSON depth, input, materialization, and UTF-8 output are budgeted; cycles and non-finite values are rejected; arbitrary CLR objects and reflection metadata are not materialized. |
+| Error disclosure | Closed | Source diagnostics include the expression and location, but runtime values use safe primitive formatting or type-only placeholders. Adversarial `ToString()` regressions cover evaluation and disassembly. |
+| Concurrency corruption | Closed within documented ownership | Compiled programs, configurations, schemas, and metadata are immutable; VM stacks and counters are per invocation. Environment and callback thread safety belongs to the host. |
+| Malformed bytecode | Closed at the public evaluator | The evaluator validates all 84 opcode forms and rejects malformed metadata/control state deterministically. The security contract still treats programs as same-version compiler products, not an interchange format. |
 
 ## Native AOT boundary
 
-The supported AOT path in this vertical is deliberately explicit:
+The supported Native AOT path compiles and evaluates source through
+`ExprEngine` rather than limiting the smoke test to syntax/runtime helpers. The
+sample:
 
-1. build an `ExprEnvironmentSchema` with
-   `ExprEnvironmentSchemaBuilder<TEnvironment>.Member` overloads that receive
-   explicit `ExprTypeDescriptor` values;
-2. adapt statically typed `IReadOnlyList<T>` and
-   `IReadOnlyDictionary<TKey, TValue>` values with `ExprCollections.AsArray`
-   and `ExprCollections.AsMap`, register them with the typed builder's
-   `ArrayMember` and `MapMember` conveniences, or use Expr-owned snapshot
-   collections;
-3. parse and walk syntax through public APIs; and
-4. use core value operations, including bounded deep equality, over those
-   explicitly adapted values.
+- builds a strict typed schema with explicit scalar, array, and map descriptors;
+- compiles an expression using comparisons, a string operator, a predicate,
+  collection indexing, and repeated environment access;
+- evaluates it with explicit work, memory, stack, scope, collection, regex, and
+  cancellation settings; and
+- validates the result and resource measurements in the native executable.
 
-`ExprEnvironmentSchema.Reflect` is correctly annotated as requiring dynamic
-code and unreferenced metadata. The two-argument `Member` overload performs CLR
-type inference and is annotated as requiring unreferenced metadata; the
-three-argument overload has no reachability edge to that discovery path.
-`ExprDynamicCollections` preserves runtime discovery for conventional hosts and
-is annotated as requiring dynamic code and unreferenced metadata. Its factory
-caches and `MakeGenericMethod` calls are not reachable from the core
-`ExprCollections`, `ExprValue.Equal`, or explicit generic adapters.
+The AOT-safe path does not call `ExprEnvironmentSchema.Reflect`, inferred
+`Member` overloads, `ExprTypes.FromClrType`, or `ExprDynamicCollections`.
+Those APIs retain honest trimming/dynamic-code annotations for conventional
+managed applications. Narrow analyzer suppressions inside CLR member discovery
+are guarded by a runtime rejection when dynamic code is unavailable; they do
+not make that discovery path part of the Native AOT contract.
 
-Raw custom types that implement only generic `IReadOnlyList<T>` or
-`IReadOnlyDictionary<TKey, TValue>` are intentionally not auto-discovered by the
-AOT-safe `TryAsArray` and `TryAsMap` methods. They must be wrapped explicitly or
-registered with `ArrayMember`/`MapMember`. Automatic adaptation remains
-available through the dynamic-only `ExprDynamicCollections` API.
+## Dependency and package review
 
-## Upstream security corpus basis
+The `Expr` runtime project has no `PackageReference` and therefore no
+third-party runtime dependency graph. Test and benchmark dependencies do not
+flow into the package. Packing is validated after a Release build, and the AOT
+sample references the project directly so it exercises the same production
+assembly.
 
-The review used the upstream `TestMaxNodes`, `TestMemoryBudget`, builtin
-recursion tests, VM budget tests, and `test/fuzz/FuzzExpr` harness as design
-inputs. Upstream fuzzing caps source at 1,000 bytes and executes with a 500,000
-unit memory budget. Those evaluator properties are targets for later parity,
-not evidence that this port already implements them.
+## Residual risks
 
-## Remaining release blockers
-
-- implement and adversarially validate evaluator work/allocation budgets and
-  cancellation;
-- validate bytecode control flow and per-invocation state isolation;
-- constrain regex syntax/execution and run catastrophic-pattern tests;
-- add JSON depth/output/type-materialization gates;
-- prohibit reflection-object discovery or explicitly narrow and document the
-  reflected schema contract;
-- keep reflection-discovered host values outside the supported trimmed/AOT
-  contract unless a future source-generated registration mechanism is added;
-- fuzz lexer, parser, checker, optimizer, compiler, and VM with timeout and
-  allocation monitoring; and
-- review the final package contents and dependency graph.
+- Accessors and custom functions can allocate, block, mutate state, perform I/O,
+  or ignore cancellation. Only their declared/estimated result charge is visible
+  to the VM.
+- Work and memory budgets are deterministic interpreter accounting, not OS-level
+  CPU or heap quotas. Applications needing containment against trusted-host bugs
+  should add process isolation and request deadlines.
+- Read-only CLR adapters do not snapshot their source. Concurrent host mutation
+  can change results or surface host collection exceptions.
+- Reflection-backed schema/type-discovery APIs depend on metadata preservation
+  and are intentionally outside the supported trimmed/AOT path.
+- .NET's non-backtracking regular-expression engine is the safety boundary. Its
+  accepted syntax is intentionally narrower than the full .NET backtracking
+  engine and may differ at Expr/RE2 compatibility edges.
+- Continuous fuzzing and upstream differential refreshes remain ongoing release
+  engineering activities; a green bounded corpus is evidence, not proof that no
+  parser/compiler defect exists.
 
 ## Validation transcript
 
-The following commands passed on .NET SDK 10.0.302 and macOS x64:
+The final gate uses .NET SDK 10.0.302 on macOS x64:
 
 ```sh
-dotnet restore tests/Expr.Security.Tests/Expr.Security.Tests.csproj
-dotnet format tests/Expr.Security.Tests/Expr.Security.Tests.csproj --verify-no-changes --no-restore
-dotnet build tests/Expr.Security.Tests/Expr.Security.Tests.csproj --configuration Release --no-restore
-dotnet test tests/Expr.Security.Tests/Expr.Security.Tests.csproj --configuration Release --no-build
+dotnet restore expr-dotnet.slnx
+dotnet format expr-dotnet.slnx --verify-no-changes --no-restore
+dotnet build expr-dotnet.slnx --configuration Release --no-restore
+dotnet test expr-dotnet.slnx --configuration Release --no-build --no-restore
+dotnet pack src/Expr/Expr.csproj --configuration Release --no-build \
+  --output artifacts/packages
 
-dotnet restore samples/Expr.NativeAot/Expr.NativeAot.csproj
-dotnet format samples/Expr.NativeAot/Expr.NativeAot.csproj --verify-no-changes --no-restore
-dotnet build samples/Expr.NativeAot/Expr.NativeAot.csproj --configuration Release --no-restore
 dotnet publish samples/Expr.NativeAot/Expr.NativeAot.csproj \
-  --configuration Release --runtime osx-x64 --no-restore --output <temporary-directory>
+  --configuration Release --runtime osx-x64 --self-contained true \
+  --output <temporary-directory>
 <temporary-directory>/Expr.NativeAot
-
-dotnet pack src/Expr/Expr.csproj --configuration Release --no-build --output artifacts/packages
 ```
 
-All 28 security tests passed. The two concurrency/reuse tests passed in ten
-consecutive filtered runs. The 2,075,968-byte Mach-O x64 AOT binary printed
-`Expr.NativeAot smoke passed: 7 nodes, 4 members.` The publish produced no
-IL2xxx trim or IL3xxx AOT diagnostics. The local linker did emit macOS minimum
-version warnings for Homebrew OpenSSL and Brotli libraries; these are toolchain
-environment warnings rather than managed trim-analysis findings.
+The final solution run passed 667 main tests and all 64 standalone adversarial
+security tests. The NuGet package contained only its metadata, MIT license,
+README, `net10.0` assembly, and XML documentation; `dotnet list package
+--include-transitive` reported no packages for the production project.
+
+The Native AOT publish produced a 4,709,032-byte Mach-O x64 executable which
+printed:
+
+```text
+Expr.NativeAot evaluation passed: 30 instructions, 47 work units, 0 memory units.
+```
+
+Publish produced no IL2xxx trimming or IL3xxx AOT diagnostics. The local linker
+reported only macOS minimum-version mismatches for Homebrew OpenSSL and Brotli
+dylibs; those are host toolchain warnings, not managed trimming/AOT findings or
+Expr package dependencies.

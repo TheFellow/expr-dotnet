@@ -48,6 +48,11 @@ public static class ExprTypes
     /// <returns>The map descriptor.</returns>
     public static MapTypeDescriptor MapOf(IEnumerable<KeyValuePair<string, ExprTypeDescriptor>> fields) => new(fields);
 
+    /// <summary>Creates a type that accepts both <see langword="null"/> and the supplied type.</summary>
+    /// <param name="underlyingType">The non-null semantic type.</param>
+    /// <returns>The nullable descriptor.</returns>
+    public static NullableTypeDescriptor Nullable(ExprTypeDescriptor underlyingType) => new(underlyingType);
+
     /// <summary>Gets the Expr descriptor for a CLR type.</summary>
     /// <typeparam name="T">The CLR type to describe.</typeparam>
     /// <returns>The semantic descriptor.</returns>
@@ -61,7 +66,13 @@ public static class ExprTypes
     public static ExprTypeDescriptor FromClrType(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
-        Type underlying = Nullable.GetUnderlyingType(type) ?? type;
+        Type? nullableUnderlying = System.Nullable.GetUnderlyingType(type);
+        if (nullableUnderlying is not null)
+        {
+            return Nullable(FromClrType(nullableUnderlying));
+        }
+
+        Type underlying = type;
 
         if (underlying == typeof(object))
         {
@@ -76,6 +87,11 @@ public static class ExprTypes
         if (underlying == typeof(string))
         {
             return String;
+        }
+
+        if (underlying.IsEnum)
+        {
+            return new ObjectTypeDescriptor(underlying);
         }
 
         if (IsIntegral(underlying))
@@ -123,7 +139,12 @@ public static class ExprTypes
     public static bool IsIntegral(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);
-        Type underlying = Nullable.GetUnderlyingType(type) ?? type;
+        Type underlying = System.Nullable.GetUnderlyingType(type) ?? type;
+        if (underlying.IsEnum)
+        {
+            return false;
+        }
+
         if (underlying == typeof(nint) || underlying == typeof(nuint))
         {
             return true;
@@ -134,6 +155,35 @@ public static class ExprTypes
             TypeCode.Int32 or TypeCode.UInt32 or TypeCode.Int64 or TypeCode.UInt64;
     }
 
+    internal static ExprTypeDescriptor FromRuntimeValue(object? value) => value switch
+    {
+        null => Nil,
+        bool => Boolean,
+        string => String,
+        sbyte or byte or short or ushort or int or uint or long or ulong or nint or nuint => Integer,
+        Half or float or double => Float,
+        DateTime or DateTimeOffset => Time,
+        TimeSpan => Duration,
+        byte[] or ReadOnlyMemory<byte> => ArrayOf(Integer),
+        IReadOnlyDictionary<long, object?> => new MapTypeDescriptor([], Any, Integer),
+        IReadOnlyDictionary<string, object?> => new MapTypeDescriptor([], Any, String),
+        IReadOnlyList<object?> => ArrayOf(Any),
+        System.Collections.IDictionary => new MapTypeDescriptor([], Any, Any),
+        System.Collections.IList => ArrayOf(Any),
+        Runtime.IExprArray => ArrayOf(Any),
+        Runtime.IExprMap => new MapTypeDescriptor([], Any, Any),
+        Delegate => Any,
+        _ => new ObjectTypeDescriptor(value.GetType()),
+    };
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "The public caller is annotated; this helper is only used by that reflection-backed API.")]
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "The public caller is annotated to preserve the delegate metadata contract.")]
     private static ExprTypeDescriptor FromDelegateType(Type type)
     {
         System.Reflection.MethodInfo invoke = type.GetMethod("Invoke") ??
@@ -145,6 +195,10 @@ public static class ExprTypes
         return new FunctionTypeDescriptor(parameters, result);
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "The public caller is annotated to preserve collection interface metadata.")]
     private static Type? GetSequenceElementType(Type type)
     {
         if (type.IsArray)
@@ -158,6 +212,10 @@ public static class ExprTypes
         return sequence?.GetGenericArguments()[0];
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2070",
+        Justification = "The public caller is annotated to preserve collection interface metadata.")]
     private static bool TryGetDictionaryTypes(Type type, out Type keyType, out Type valueType)
     {
         Type? dictionary = type.GetInterfaces().Append(type)

@@ -1,20 +1,16 @@
 using System;
-using System.Collections.Concurrent;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Expr.Runtime;
 
 namespace Expr.Builtins;
 
 internal static class ExprBuiltinSerialization
 {
-    private static readonly ConcurrentDictionary<Type, IReadOnlyList<JsonMember>> JsonMembers = new();
-
     public static ExprInvocationResult ToJson(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options)
     {
         int maximumDepth = Math.Min(options.MaximumDepth, 256);
@@ -134,6 +130,12 @@ internal static class ExprBuiltinSerialization
                 break;
         }
 
+        if (ExprReflectionPolicy.IsForbiddenType(value.GetType()))
+        {
+            throw new ExprRuntimeException(
+                $"json: unsupported value: {ExprBuiltinValues.TypeNameOf(value)}");
+        }
+
         if (!value.GetType().IsValueType && !active.Add(value))
         {
             throw new ExprRuntimeException("json: unsupported value: encountered a cycle");
@@ -171,16 +173,8 @@ internal static class ExprBuiltinSerialization
                 return result;
             }
 
-            IReadOnlyList<JsonMember> members = JsonMembers.GetOrAdd(value.GetType(), BuildJsonMembers);
-            budget.Charge(members.Count);
-            var objectResult = new SortedDictionary<string, object?>(StringComparer.Ordinal);
-            foreach (JsonMember member in members)
-            {
-                objectResult[member.Name] = Normalize(
-                    member.GetValue(value), depth + 1, maximumDepth, active, budget);
-            }
-
-            return objectResult;
+            throw new ExprRuntimeException(
+                $"json: unsupported value: {ExprBuiltinValues.TypeNameOf(value)}");
         }
         finally
         {
@@ -364,18 +358,36 @@ internal static class ExprBuiltinSerialization
                 Append(output, Convert.ToString(value, CultureInfo.InvariantCulture)!, budget);
                 return;
             case Half half:
-                Append(output, JsonSerializer.Serialize((float)half), budget);
+                Append(output, FormatJsonNumber((float)half), budget);
                 return;
             case float number:
-                Append(output, JsonSerializer.Serialize(number), budget);
+                Append(output, FormatJsonNumber(number), budget);
                 return;
             case double number:
-                Append(output, JsonSerializer.Serialize(number), budget);
+                Append(output, FormatJsonNumber(number), budget);
                 return;
             default:
                 throw new ExprRuntimeException(
                     $"json: unsupported value: {ExprBuiltinValues.TypeNameOf(value)}");
         }
+    }
+
+    private static string FormatJsonNumber(double value)
+    {
+        var buffer = new ArrayBufferWriter<byte>(32);
+        using var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { SkipValidation = true });
+        writer.WriteNumberValue(value);
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+
+    private static string FormatJsonNumber(float value)
+    {
+        var buffer = new ArrayBufferWriter<byte>(32);
+        using var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { SkipValidation = true });
+        writer.WriteNumberValue(value);
+        writer.Flush();
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     private static void AppendQuoted(StringBuilder output, string value, AllocationBudget budget)
@@ -453,31 +465,6 @@ internal static class ExprBuiltinSerialization
         string result = value.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFzzz", CultureInfo.InvariantCulture);
         return value.Offset == TimeSpan.Zero ? string.Concat(result.AsSpan(0, result.Length - 6), "Z") : result;
     }
-
-    private static IReadOnlyList<JsonMember> BuildJsonMembers(Type type)
-    {
-        IEnumerable<JsonMember> properties = type
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static property => property.GetMethod is not null && property.GetIndexParameters().Length == 0)
-            .Where(static property => property.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
-            .Select(static property => new JsonMember(
-                property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? property.Name,
-                property.GetValue));
-        IEnumerable<JsonMember> fields = type
-            .GetFields(BindingFlags.Instance | BindingFlags.Public)
-            .Where(static field => field.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
-            .Select(static field => new JsonMember(
-                field.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name ?? field.Name,
-                field.GetValue));
-        return Array.AsReadOnly(properties
-            .Concat(fields)
-            .GroupBy(static member => member.Name, StringComparer.Ordinal)
-            .Select(static group => group.First())
-            .OrderBy(static member => member.Name, StringComparer.Ordinal)
-            .ToArray());
-    }
-
-    private sealed record JsonMember(string Name, Func<object, object?> GetValue);
 
     private sealed class AllocationBudget(long maximum)
     {

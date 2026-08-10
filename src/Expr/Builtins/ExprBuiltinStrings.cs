@@ -9,6 +9,93 @@ namespace Expr.Builtins;
 
 internal static class ExprBuiltinStrings
 {
+    public static ExprInvocationResult TrimSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateTrim(arguments), Trim);
+
+    public static ExprInvocationResult TrimPrefixSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateInput(arguments, "trimPrefix"), TrimPrefix);
+
+    public static ExprInvocationResult TrimSuffixSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateInput(arguments, "trimSuffix"), TrimSuffix);
+
+    public static ExprInvocationResult UpperSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateCasing(arguments, "upper"), Upper);
+
+    public static ExprInvocationResult LowerSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateCasing(arguments, "lower"), Lower);
+
+    public static ExprInvocationResult SplitSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateSplit(arguments, "split"), Split);
+
+    public static ExprInvocationResult SplitAfterSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateSplit(arguments, "splitAfter"), SplitAfter);
+
+    public static ExprInvocationResult ReplaceSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateReplace(arguments), Replace);
+
+    public static ExprInvocationResult JoinSafe(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options) =>
+        InvokeBounded(arguments, options, EstimateJoin(arguments), Join);
+
+    public static ulong EstimateTrim(ReadOnlySpan<object?> arguments) => EstimateInput(arguments, "trim");
+
+    public static ulong EstimateInputCost(ReadOnlySpan<object?> arguments, string name) =>
+        EstimateInput(arguments, name);
+
+    public static ulong EstimateCasing(ReadOnlySpan<object?> arguments, string name)
+    {
+        ulong input = EstimateInput(arguments, name);
+        return CheckedCost(() => checked((input * 3UL) + 4UL));
+    }
+
+    public static ulong EstimateSplit(ReadOnlySpan<object?> arguments, string name)
+    {
+        string text = RequireString(arguments[0], name);
+        ulong input = Utf8Cost(text);
+        return CheckedCost(() => checked(input + (ulong)text.Length + 1UL));
+    }
+
+    public static ulong EstimateReplace(ReadOnlySpan<object?> arguments)
+    {
+        string text = RequireString(arguments[0], "replace");
+        string oldValue = RequireString(arguments[1], "replace");
+        string newValue = RequireString(arguments[2], "replace");
+        int requested = arguments.Length == 4 ? ToCount(arguments[3], "replace") : -1;
+        if (requested == 0)
+        {
+            return 0;
+        }
+
+        long replacements = oldValue.Length == 0
+            ? CountEmptyReplacements(text, requested)
+            : CountReplacements(text, oldValue, requested);
+        ulong inputCost = Utf8Cost(text);
+        ulong oldCost = Utf8Cost(oldValue);
+        ulong newCost = Utf8Cost(newValue);
+        return CheckedCost(() => checked(
+            inputCost - (oldCost * (ulong)replacements) + (newCost * (ulong)replacements)));
+    }
+
+    public static ulong EstimateJoin(ReadOnlySpan<object?> arguments)
+    {
+        if (!ExprCollections.TryAsArray(arguments[0], out IExprArray? array) || array is null)
+        {
+            throw new ExprRuntimeException(
+                $"invalid argument for join (type {ExprBuiltinValues.TypeNameOf(arguments[0])})");
+        }
+
+        string separator = arguments.Length == 2 ? RequireString(arguments[1], "join") : string.Empty;
+        ulong cost = array.Count > 0
+            ? CheckedCost(() => checked(Utf8Cost(separator) * (ulong)(array.Count - 1)))
+            : 0;
+        for (int index = 0; index < array.Count; index++)
+        {
+            string value = RequireString(array[index], "join");
+            cost = CheckedCost(() => checked(cost + Utf8Cost(value) + 1UL));
+        }
+
+        return cost;
+    }
+
     public static object Trim(ReadOnlySpan<object?> arguments)
     {
         string text = RequireString(arguments[0], "trim");
@@ -178,6 +265,67 @@ internal static class ExprBuiltinStrings
             > int.MaxValue => int.MaxValue,
             _ => (int)count,
         };
+    }
+
+    private static ExprInvocationResult InvokeBounded(
+        ReadOnlySpan<object?> arguments,
+        ExprBuiltinOptions options,
+        ulong cost,
+        ExprFunctionInvoker invoker)
+    {
+        if (cost > int.MaxValue || cost > (ulong)options.MaximumAllocation)
+        {
+            throw new ExprRuntimeException("memory budget exceeded");
+        }
+
+        return new ExprInvocationResult(invoker(arguments), cost);
+    }
+
+    private static ulong EstimateInput(ReadOnlySpan<object?> arguments, string name) =>
+        Utf8Cost(RequireString(arguments[0], name));
+
+    private static ulong Utf8Cost(string value) => CheckedCost(() => (ulong)Encoding.UTF8.GetByteCount(value));
+
+    private static ulong CheckedCost(Func<ulong> calculate)
+    {
+        try
+        {
+            return calculate();
+        }
+        catch (OverflowException exception)
+        {
+            throw new ExprRuntimeException("memory budget exceeded", exception);
+        }
+    }
+
+    private static long CountEmptyReplacements(string text, int requested)
+    {
+        long possible = 1;
+        foreach (Rune _ in text.EnumerateRunes())
+        {
+            possible++;
+        }
+
+        return requested < 0 ? possible : Math.Min(requested, possible);
+    }
+
+    private static long CountReplacements(string text, string oldValue, int requested)
+    {
+        long replacements = 0;
+        int start = 0;
+        while ((requested < 0 || replacements < requested) && start <= text.Length)
+        {
+            int found = text.IndexOf(oldValue, start, StringComparison.Ordinal);
+            if (found < 0)
+            {
+                break;
+            }
+
+            replacements++;
+            start = found + oldValue.Length;
+        }
+
+        return replacements;
     }
 
     private static string[] SplitCore(string text, string separator, int count, bool includeSeparator)

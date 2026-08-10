@@ -51,23 +51,14 @@ public sealed class BuiltinCollectionTests
     }
 
     [Fact]
-    public void Get_honors_expr_member_aliases_and_hidden_members()
+    public void Get_does_not_reflect_unbound_host_members_or_methods()
     {
         var value = new MemberFixture();
 
-        Assert.Equal(42L, Invoke("get", value, "answer"));
+        Assert.Null(Invoke("get", value, "answer"));
         Assert.Null(Invoke("get", value, nameof(MemberFixture.Hidden)));
+        Assert.Null(Invoke("get", value, nameof(MemberFixture.Add)));
         Assert.Null(Invoke("get", value, "missing"));
-    }
-
-    [Fact]
-    public void Get_returns_a_bound_cached_delegate_for_unambiguous_public_methods()
-    {
-        var value = new MemberFixture();
-
-        var callable = Assert.IsAssignableFrom<Delegate>(Invoke("get", value, nameof(MemberFixture.Add)));
-
-        Assert.Equal(45L, callable.DynamicInvoke(3L));
     }
 
     [Fact]

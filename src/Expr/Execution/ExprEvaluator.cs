@@ -20,8 +20,13 @@ public sealed class ExprEvaluator
         ExprProgram program,
         object? environment = null,
         ExprEvaluationOptions? options = null,
-        CancellationToken cancellationToken = default) =>
-        EvaluateDetailed(program, environment, options, cancellationToken).Value;
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+        var requestedOptions = options ?? new ExprEvaluationOptions();
+        ExprProgramValidator.Validate(program, requestedOptions);
+        return new ExprExecutionMachine(program, environment, requestedOptions, cancellationToken).RunValue();
+    }
 
     /// <summary>Evaluates a program and returns resource and profiling information.</summary>
     /// <param name="program">The immutable bytecode program.</param>
@@ -38,6 +43,6 @@ public sealed class ExprEvaluator
         ArgumentNullException.ThrowIfNull(program);
         var requestedOptions = options ?? new ExprEvaluationOptions();
         ExprProgramValidator.Validate(program, requestedOptions);
-        return new ExprExecutionMachine(program, environment, requestedOptions, cancellationToken).Run();
+        return new ExprExecutionMachine(program, environment, requestedOptions, cancellationToken).RunDetailed();
     }
 }

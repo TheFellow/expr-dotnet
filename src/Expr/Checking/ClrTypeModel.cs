@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Expr.Runtime;
 using Expr.Types;
 
@@ -29,14 +30,36 @@ internal sealed class ClrTypeModel
 
     internal ExprTypeDescriptor? ValueProviderType { get; }
 
+    internal static ClrTypeModel Get(Type type)
+    {
+        if (!RuntimeFeature.IsDynamicCodeSupported)
+        {
+            throw new ExprRuntimeException(
+                $"CLR object member discovery for {type.FullName} is unavailable under Native AOT; " +
+                "use explicitly declared scalar, collection, or function metadata");
+        }
+
+        return Cache.GetOrAdd(type, static clrType => Create(clrType));
+    }
+
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "This reflection path is rejected when dynamic code is unavailable and is documented as unsupported for trimmed hosts.")]
     [UnconditionalSuppressMessage(
         "Trimming",
         "IL2070",
-        Justification = "Reflection-backed checking is documented on ExprChecker; AOT callers should use primitive, map, and explicitly declared function metadata.")]
-    internal static ClrTypeModel Get(Type type) => Cache.GetOrAdd(type, static clrType => Create(clrType));
-
+        Justification = "This reflection path is rejected when dynamic code is unavailable and is documented as unsupported for trimmed hosts.")]
     private static ClrTypeModel Create(Type type)
     {
+        if (ExprReflectionPolicy.IsForbiddenType(type))
+        {
+            return new ClrTypeModel(
+                new Dictionary<string, ClrValueMember>(StringComparer.Ordinal),
+                new Dictionary<string, IReadOnlyList<MethodInfo>>(StringComparer.Ordinal),
+                null);
+        }
+
         var members = new Dictionary<string, ClrValueMember>(StringComparer.Ordinal);
         foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {

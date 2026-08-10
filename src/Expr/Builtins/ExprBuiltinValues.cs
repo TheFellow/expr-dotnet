@@ -84,6 +84,18 @@ internal static class ExprBuiltinValues
     public static object Int(ReadOnlySpan<object?> arguments)
     {
         object? value = arguments[0];
+        if (value is Enum enumeration)
+        {
+            try
+            {
+                return Convert.ToInt64(enumeration, CultureInfo.InvariantCulture);
+            }
+            catch (OverflowException exception)
+            {
+                throw new ExprRuntimeException($"invalid operation: int({TypeNameOf(value)})", exception);
+            }
+        }
+
         if (value is string text)
         {
             if (long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long parsed))
@@ -128,6 +140,22 @@ internal static class ExprBuiltinValues
     }
 
     public static object String(ReadOnlySpan<object?> arguments) => Format(arguments[0]);
+
+    public static ExprInvocationResult StringSafe(
+        ReadOnlySpan<object?> arguments,
+        ExprBuiltinOptions options)
+    {
+        ulong cost = EstimateString(arguments);
+        if (cost > (ulong)options.MaximumAllocation)
+        {
+            throw new ExprRuntimeException("memory budget exceeded");
+        }
+
+        return new ExprInvocationResult(Format(arguments[0]), cost);
+    }
+
+    public static ulong EstimateString(ReadOnlySpan<object?> arguments) =>
+        EstimateFormat(arguments[0]);
 
     public static object BinaryBit(
         ReadOnlySpan<object?> arguments,
@@ -323,13 +351,120 @@ internal static class ExprBuiltinValues
     private static string FormatScalar(object? value) => value switch
     {
         null => "<nil>",
-        bool boolean => boolean ? "true" : "false",
-        double number => number.ToString("G", CultureInfo.InvariantCulture),
-        float number => number.ToString("G", CultureInfo.InvariantCulture),
-        Half number => number.ToString("G", CultureInfo.InvariantCulture),
-        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? string.Empty,
+        _ => ExprDisplay.Value(value),
     };
+
+    private static ulong EstimateFormat(object? value)
+    {
+        const int maximumDepth = 10_000;
+        const ulong maximumLength = 1_000_000;
+        ulong length = 0;
+        var activeCollections = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var activeEnumerators = new List<IEnumerator<KeyValuePair<object?, object?>>>();
+        var work = new Stack<EstimateFrame>();
+        work.Push(EstimateFrame.Value(value, 0));
+        try
+        {
+            while (work.TryPop(out EstimateFrame frame))
+            {
+                switch (frame.Kind)
+                {
+                    case EstimateFrameKind.Value:
+                        EstimateValue(frame.Item, frame.Depth);
+                        break;
+                    case EstimateFrameKind.Array:
+                        if (frame.Index < frame.Array!.Count)
+                        {
+                            work.Push(frame with { Index = frame.Index + 1 });
+                            work.Push(EstimateFrame.Value(frame.Array[frame.Index], frame.Depth + 1));
+                        }
+
+                        break;
+                    case EstimateFrameKind.Map:
+                        if (frame.Map!.MoveNext())
+                        {
+                            work.Push(frame);
+                            work.Push(EstimateFrame.Value(frame.Map.Current.Value, frame.Depth + 1));
+                            work.Push(EstimateFrame.Value(frame.Map.Current.Key, frame.Depth + 1));
+                        }
+
+                        break;
+                    case EstimateFrameKind.Exit:
+                        _ = activeCollections.Remove(frame.Item!);
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unknown format-estimation frame.");
+                }
+            }
+        }
+        finally
+        {
+            foreach (IEnumerator<KeyValuePair<object?, object?>> enumerator in activeEnumerators)
+            {
+                enumerator.Dispose();
+            }
+        }
+
+        return length;
+
+        void EstimateValue(object? item, int depth)
+        {
+            if (ExprCollections.TryAsArray(item, out IExprArray? array) && array is not null)
+            {
+                if (!EnterCollection(item!, depth))
+                {
+                    return;
+                }
+
+                Add(checked((ulong)array.Count + 1UL));
+                work.Push(EstimateFrame.Exit(item!));
+                work.Push(EstimateFrame.ArrayValue(array, depth));
+                return;
+            }
+
+            if (ExprCollections.TryAsMap(item, out IExprMap? map) && map is not null)
+            {
+                if (!EnterCollection(item!, depth))
+                {
+                    return;
+                }
+
+                Add(checked(5UL + ((ulong)map.Count * 2UL) - (map.Count > 0 ? 1UL : 0UL)));
+                IEnumerator<KeyValuePair<object?, object?>> enumerator = map.GetEnumerator();
+                activeEnumerators.Add(enumerator);
+                work.Push(EstimateFrame.Exit(item!));
+                work.Push(EstimateFrame.MapValue(enumerator, depth));
+                return;
+            }
+
+            Add((ulong)FormatScalar(item).Length);
+        }
+
+        bool EnterCollection(object identity, int depth)
+        {
+            if (depth >= maximumDepth)
+            {
+                throw new ExprRuntimeException($"string formatting exceeds maximum depth of {maximumDepth}");
+            }
+
+            if (!activeCollections.Add(identity))
+            {
+                Add(7);
+                return false;
+            }
+
+            return true;
+        }
+
+        void Add(ulong amount)
+        {
+            length = checked(length + amount);
+            if (length > maximumLength)
+            {
+                throw new ExprRuntimeException($"string formatting exceeds maximum length of {maximumLength}");
+            }
+        }
+    }
 
     private static void AppendBounded(StringBuilder builder, string value, int maximumLength)
     {
@@ -346,6 +481,36 @@ internal static class ExprBuiltinValues
         Value,
         Text,
         ExitCollection,
+    }
+
+    private enum EstimateFrameKind
+    {
+        Value,
+        Array,
+        Map,
+        Exit,
+    }
+
+    private readonly record struct EstimateFrame(
+        EstimateFrameKind Kind,
+        object? Item,
+        IExprArray? Array,
+        IEnumerator<KeyValuePair<object?, object?>>? Map,
+        int Index,
+        int Depth)
+    {
+        internal static EstimateFrame Value(object? item, int depth) =>
+            new(EstimateFrameKind.Value, item, null, null, 0, depth);
+
+        internal static EstimateFrame ArrayValue(IExprArray array, int depth) =>
+            new(EstimateFrameKind.Array, null, array, null, 0, depth);
+
+        internal static EstimateFrame MapValue(
+            IEnumerator<KeyValuePair<object?, object?>> map,
+            int depth) => new(EstimateFrameKind.Map, null, null, map, 0, depth);
+
+        internal static EstimateFrame Exit(object item) =>
+            new(EstimateFrameKind.Exit, item, null, null, 0, 0);
     }
 
     private readonly record struct FormatFrame(FormatFrameKind Kind, object? Item, string? Text, int Depth)

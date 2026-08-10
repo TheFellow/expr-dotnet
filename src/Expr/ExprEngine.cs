@@ -210,6 +210,7 @@ public static class ExprEngine
 
         return new SyntaxParserOptions
         {
+            MaximumSourceLength = configuration.MaximumSourceLength,
             MaximumNodeCount = configuration.MaximumNodeCount,
             MaximumParseDepth = Math.Min(
                 new SyntaxParserOptions().MaximumParseDepth,

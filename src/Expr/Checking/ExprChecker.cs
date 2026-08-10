@@ -153,9 +153,7 @@ public sealed class ExprChecker
             BooleanNode => ExprTypes.Boolean,
             StringNode => ExprTypes.String,
             BytesNode => ExprTypes.ArrayOf(ExprTypes.Integer),
-            ConstantNode constant => constant.Value is null
-                ? ExprTypes.Nil
-                : ExprTypes.FromClrType(constant.Value.GetType()),
+            ConstantNode constant => ExprTypes.FromRuntimeValue(constant.Value),
             UnaryNode unary => VisitUnary(unary),
             BinaryNode binary => VisitBinary(binary),
             ChainNode chain => Visit(chain.Expression),
@@ -220,7 +218,7 @@ public sealed class ExprChecker
             return member.Type;
         }
 
-        if (configuration.TryGetFunction(node.Name, out ExprFunction? function) && function is not null)
+        if (configuration.Functions.TryGetValue(node.Name, out ExprFunction? function))
         {
             ExprTypeDescriptor functionType = FunctionType(function);
             annotations[node] = new ExprNodeSemantics(functionType, function);
@@ -241,7 +239,20 @@ public sealed class ExprChecker
             }
         }
 
-        return configuration.Strict ? Error(node, $"unknown name {node.Name}") : ExprTypes.Any;
+        if (!configuration.Strict)
+        {
+            return ExprTypes.Any;
+        }
+
+        if (!configuration.DisabledBuiltins.Contains(node.Name) &&
+            configuration.Builtins.TryGetValue(node.Name, out ExprFunction? builtin))
+        {
+            ExprTypeDescriptor functionType = FunctionType(builtin);
+            annotations[node] = new ExprNodeSemantics(functionType, builtin);
+            return functionType;
+        }
+
+        return Error(node, $"unknown name {node.Name}");
     }
 
     private ExprTypeDescriptor VisitUnary(UnaryNode node)
@@ -1172,6 +1183,10 @@ public sealed class ExprChecker
         return new FunctionTypeDescriptor(overload.Parameters, overload.ReturnType, overload.IsVariadic);
     }
 
+    [UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2026",
+        Justification = "Method overload discovery is reachable only after ClrTypeModel rejects Native AOT execution.")]
     private static ExprFunctionOverload MethodOverload(MethodInfo method)
     {
         ParameterInfo[] parameters = method.GetParameters();

@@ -200,14 +200,7 @@ public sealed class ExprProgram
             return "out of range";
         }
 
-        object? value = constants[index];
-        return value switch
-        {
-            null => "nil",
-            ReadOnlyMemory<byte> bytes => Convert.ToHexString(bytes.Span),
-            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty,
-            _ => value.ToString() ?? string.Empty,
-        };
+        return ExprDisplay.Value(constants[index]);
     }
 
     private static object? SnapshotConstant(object? value) => value switch

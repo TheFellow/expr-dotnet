@@ -4,6 +4,8 @@
     <RootNamespace>Expr</RootNamespace>
     <Description>A faithful, safe, and fast C# semantic port of expr-lang/expr.</Description>
     <PackageId>Expr</PackageId>
+    <Authors>TheFellow contributors</Authors>
+    <Copyright>Copyright (c) 2026 TheFellow contributors</Copyright>
     <PackageTags>expression;expression-language;compiler;bytecode;interpreter;rules</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>

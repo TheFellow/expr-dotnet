@@ -39,11 +39,26 @@ public sealed class ConfigurationTests
     {
         Assert.Throws<ArgumentException>(() => ExprConfiguration.Default.WithConstantFunction("missing"));
 
-        ExprEnvironmentSchema schema = new ExprEnvironmentSchemaBuilder<NonFunctionEnvironment>()
-            .Member("value", static environment => environment.Value)
+        ExprEnvironmentSchema schema = new ExprEnvironmentSchemaBuilder<FunctionEnvironment>()
+            .Member(
+                "stable",
+                static environment => environment.Stable,
+                new FunctionTypeDescriptor([], ExprTypes.Integer))
             .Build();
+        var environment = new FunctionEnvironment(static () => 42L);
+        Assert.Equal(42L, Assert.IsType<Func<long>>(schema.Read(environment, "stable"))());
         Assert.Throws<ArgumentException>(() =>
-            ExprConfiguration.Default.WithEnvironment(schema).WithConstantFunction("value"));
+            ExprConfiguration.Default.WithEnvironment(schema).WithConstantFunction("stable"));
+
+        var function = new ExprFunction(
+            "stable",
+            [new ExprFunctionOverload([], ExprTypes.Integer)],
+            static _ => 42L);
+        ExprConfiguration configuration = ExprConfiguration.Default
+            .WithFunction(function)
+            .WithConstantFunction("stable");
+
+        Assert.Contains("stable", configuration.ConstantFunctions);
     }
 
     [Fact]
@@ -77,5 +92,5 @@ public sealed class ConfigurationTests
         Assert.Single(configuration.Patchers);
     }
 
-    private readonly record struct NonFunctionEnvironment(int Value);
+    private sealed record FunctionEnvironment(Func<long> Stable);
 }

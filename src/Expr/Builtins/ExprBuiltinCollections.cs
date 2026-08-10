@@ -1,17 +1,12 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Reflection;
 using Expr.Runtime;
 
 namespace Expr.Builtins;
 
 internal static class ExprBuiltinCollections
 {
-    private static readonly ConcurrentDictionary<(Type Type, string Name), MemberAccess> MemberAccessors = new();
-
     public static object? MinMax(ReadOnlySpan<object?> arguments, bool maximum, ExprBuiltinOptions options)
     {
         if (arguments.IsEmpty)
@@ -112,18 +107,6 @@ internal static class ExprBuiltinCollections
             return null;
         }
 
-        MemberAccess? memberAccess = null;
-        if (key is string memberName)
-        {
-            memberAccess = MemberAccessors.GetOrAdd(
-                (from.GetType(), memberName),
-                static pair => BuildMemberAccess(pair.Type, pair.Name));
-            if (memberAccess.Method is not null)
-            {
-                return BindMethod(memberAccess.Method, from);
-            }
-        }
-
         if (ExprCollections.TryAsArray(from, out IExprArray? array) && array is not null)
         {
             long requested = ExprBuiltinValues.RequireInteger(key, "get");
@@ -142,11 +125,6 @@ internal static class ExprBuiltinCollections
         if (ExprCollections.TryAsMap(from, out IExprMap? map) && map is not null)
         {
             return map.TryGetValue(key, out object? value) ? value : null;
-        }
-
-        if (memberAccess?.Accessor is not null)
-        {
-            return memberAccess.Accessor(from);
         }
 
         return null;
@@ -422,97 +400,6 @@ internal static class ExprBuiltinCollections
                 visitor(item.Value, item.Depth);
             }
         }
-    }
-
-    private static MemberAccess BuildMemberAccess(Type type, string name)
-    {
-        MethodInfo[] methods = type
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .Where(candidate => candidate.DeclaringType != typeof(object) &&
-                !candidate.IsSpecialName &&
-                !candidate.ContainsGenericParameters &&
-                string.Equals(candidate.Name, name, StringComparison.Ordinal) &&
-                candidate.GetParameters().All(static parameter =>
-                    !parameter.ParameterType.IsByRef && !parameter.IsOut))
-            .ToArray();
-        if (methods.Length == 1 && TryGetDelegateType(methods[0], out _))
-        {
-            return new MemberAccess(null, methods[0]);
-        }
-
-        PropertyInfo? property = type
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .FirstOrDefault(candidate =>
-            {
-                ExprMemberAttribute? attribute = candidate.GetCustomAttribute<ExprMemberAttribute>(inherit: true);
-                return attribute?.Ignore is not true &&
-                    string.Equals(attribute?.Name ?? candidate.Name, name, StringComparison.Ordinal);
-            });
-        if (property?.GetMethod is not null && property.GetIndexParameters().Length == 0)
-        {
-            return new MemberAccess(property.GetValue, null);
-        }
-
-        FieldInfo? field = type
-            .GetFields(BindingFlags.Instance | BindingFlags.Public)
-            .FirstOrDefault(candidate =>
-            {
-                ExprMemberAttribute? attribute = candidate.GetCustomAttribute<ExprMemberAttribute>(inherit: true);
-                return attribute?.Ignore is not true &&
-                    string.Equals(attribute?.Name ?? candidate.Name, name, StringComparison.Ordinal);
-            });
-        if (field is null)
-        {
-            return MemberAccess.None;
-        }
-
-        return new MemberAccess(instance => field.GetValue(instance), null);
-    }
-
-    private static Delegate? BindMethod(MethodInfo method, object instance)
-    {
-        if (!TryGetDelegateType(method, out Type? delegateType))
-        {
-            return null;
-        }
-
-        try
-        {
-            return method.CreateDelegate(delegateType!, instance);
-        }
-        catch (ArgumentException)
-        {
-            return null;
-        }
-    }
-
-    private static bool TryGetDelegateType(MethodInfo method, out Type? delegateType)
-    {
-        ParameterInfo[] parameters = method.GetParameters();
-        if (parameters.Length > 16)
-        {
-            delegateType = null;
-            return false;
-        }
-
-        Type[] parameterTypes = parameters.Select(static parameter => parameter.ParameterType).ToArray();
-        try
-        {
-            delegateType = method.ReturnType == typeof(void)
-                ? Expression.GetActionType(parameterTypes)
-                : Expression.GetFuncType([.. parameterTypes, method.ReturnType]);
-            return true;
-        }
-        catch (ArgumentException)
-        {
-            delegateType = null;
-            return false;
-        }
-    }
-
-    private sealed record MemberAccess(Func<object, object?>? Accessor, MethodInfo? Method)
-    {
-        public static MemberAccess None { get; } = new(null, null);
     }
 
     private static ExprRuntimeException InvalidAggregate(string name, object? value) =>

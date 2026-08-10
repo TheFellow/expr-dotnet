@@ -15,6 +15,11 @@ public delegate object? ExprFunctionInvoker(ReadOnlySpan<object?> arguments);
 /// <returns>The result and memory cost reported by the function.</returns>
 public delegate ExprInvocationResult ExprSafeFunctionInvoker(ReadOnlySpan<object?> arguments);
 
+/// <summary>Estimates an upper bound for memory allocated by an Expr function before it runs.</summary>
+/// <param name="arguments">The ordered arguments.</param>
+/// <returns>The allocation charge upper bound.</returns>
+public delegate ulong ExprFunctionMemoryEstimator(ReadOnlySpan<object?> arguments);
+
 /// <summary>Validates argument types and computes a function result type.</summary>
 /// <param name="arguments">The ordered argument types.</param>
 /// <returns>The result type.</returns>
@@ -80,13 +85,15 @@ public sealed class ExprFunction
     /// <param name="safeInvoker">The resource-accounting invoker.</param>
     /// <param name="typeValidator">An optional custom type validator.</param>
     /// <param name="isPredicate">Whether the compiler supplies a predicate closure.</param>
+    /// <param name="memoryEstimator">An optional pre-invocation allocation upper bound.</param>
     public ExprFunction(
         string name,
         IEnumerable<ExprFunctionOverload> overloads,
         ExprFunctionInvoker? invoker = null,
         ExprSafeFunctionInvoker? safeInvoker = null,
         ExprFunctionTypeValidator? typeValidator = null,
-        bool isPredicate = false)
+        bool isPredicate = false,
+        ExprFunctionMemoryEstimator? memoryEstimator = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(overloads);
@@ -107,6 +114,7 @@ public sealed class ExprFunction
         SafeInvoker = safeInvoker;
         TypeValidator = typeValidator;
         IsPredicate = isPredicate;
+        MemoryEstimator = memoryEstimator;
     }
 
     /// <summary>Gets the expression-visible name.</summary>
@@ -126,6 +134,14 @@ public sealed class ExprFunction
 
     /// <summary>Gets a value indicating whether the function consumes a compiler-provided predicate.</summary>
     public bool IsPredicate { get; }
+
+    /// <summary>Gets the optional estimator used to reject over-budget calls before host allocation.</summary>
+    public ExprFunctionMemoryEstimator? MemoryEstimator { get; }
+
+    /// <summary>Estimates an allocation upper bound for the supplied arguments.</summary>
+    /// <param name="arguments">The ordered runtime arguments.</param>
+    /// <returns>The estimated allocation charge, or zero when no estimator is registered.</returns>
+    public ulong EstimateMemoryCost(ReadOnlySpan<object?> arguments) => MemoryEstimator?.Invoke(arguments) ?? 0;
 
     /// <summary>Invokes the function and returns its value and resource charge.</summary>
     /// <param name="arguments">The ordered runtime arguments.</param>

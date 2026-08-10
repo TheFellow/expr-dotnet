@@ -27,15 +27,17 @@ public sealed class BuiltinSerializationAndTimeTests
     }
 
     [Fact]
-    public void Json_matches_go_time_duration_struct_and_escaping_rules()
+    public void Json_matches_go_time_duration_map_and_escaping_rules()
     {
         var library = new ExprBuiltinLibrary();
-        var value = new JsonFixture
-        {
-            Duration = TimeSpan.FromTicks(12_345),
-            Text = "<line>\né",
-            When = new DateTimeOffset(2024, 2, 3, 4, 5, 6, TimeSpan.Zero).AddTicks(1_234_567),
-        };
+        var value = new ExprMap(
+        [
+            new KeyValuePair<object?, object?>("Duration", TimeSpan.FromTicks(12_345)),
+            new KeyValuePair<object?, object?>("Text", "<line>\né"),
+            new KeyValuePair<object?, object?>(
+                "When",
+                new DateTimeOffset(2024, 2, 3, 4, 5, 6, TimeSpan.Zero).AddTicks(1_234_567)),
+        ]);
 
         Assert.Equal(
             "{\n  \"Duration\": 1234500,\n  \"Text\": \"\\u003cline\\u003e\\né\",\n  \"When\": \"2024-02-03T04:05:06.1234567Z\"\n}",
@@ -68,7 +70,7 @@ public sealed class BuiltinSerializationAndTimeTests
     }
 
     [Fact]
-    public void Json_accounts_for_host_members_before_materializing_output()
+    public void Json_rejects_unadapted_host_objects_and_bounds_input()
     {
         var library = new ExprBuiltinLibrary(new ExprBuiltinOptions { MaximumAllocation = 32 });
 
@@ -322,15 +324,6 @@ public sealed class BuiltinSerializationAndTimeTests
     private sealed class FixedTimeProvider(DateTimeOffset value) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => value;
-    }
-
-    private sealed class JsonFixture
-    {
-        public TimeSpan Duration { get; init; }
-
-        public string Text { get; init; } = string.Empty;
-
-        public DateTimeOffset When { get; init; }
     }
 
     private sealed class HostStringFixture

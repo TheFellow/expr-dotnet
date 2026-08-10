@@ -22,6 +22,16 @@ internal static class ExprTypeRelations
             return true;
         }
 
+        if (target is NullableTypeDescriptor nullableTarget)
+        {
+            return value.Kind is ExprTypeKind.Nil || CanAssign(Unwrap(value), nullableTarget.UnderlyingType);
+        }
+
+        if (value is NullableTypeDescriptor nullableValue)
+        {
+            return CanAssign(nullableValue.UnderlyingType, Unwrap(target));
+        }
+
         if (value.Kind is ExprTypeKind.Nil)
         {
             return target.Kind is ExprTypeKind.Nil or ExprTypeKind.Any or ExprTypeKind.Array or
@@ -138,6 +148,9 @@ internal static class ExprTypeRelations
 
         return CanAssign(value, target) ? 2 : -1;
     }
+
+    private static ExprTypeDescriptor Unwrap(ExprTypeDescriptor type) =>
+        type is NullableTypeDescriptor nullable ? nullable.UnderlyingType : type;
 
     private static bool MapValuesCompatible(MapTypeDescriptor value, MapTypeDescriptor target)
     {

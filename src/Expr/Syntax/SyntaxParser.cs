@@ -12,6 +12,12 @@ public sealed record SyntaxParserOptions
     /// <summary>Gets the default maximum number of AST nodes.</summary>
     public const int DefaultMaximumNodeCount = 10_000;
 
+    /// <summary>Gets the default maximum source length in UTF-16 code units.</summary>
+    public const int DefaultMaximumSourceLength = 1_000_000;
+
+    /// <summary>Gets or initializes the maximum source length, or zero for no limit.</summary>
+    public int MaximumSourceLength { get; init; } = DefaultMaximumSourceLength;
+
     /// <summary>Gets or initializes the maximum number of AST nodes, or zero for no limit.</summary>
     public int MaximumNodeCount { get; init; } = DefaultMaximumNodeCount;
 
@@ -127,6 +133,13 @@ public sealed class SyntaxParser
         var requestedOptions = options ?? new SyntaxParserOptions();
         ArgumentNullException.ThrowIfNull(requestedOptions.DisabledBuiltins);
         ArgumentNullException.ThrowIfNull(requestedOptions.OverriddenBuiltins);
+        ArgumentOutOfRangeException.ThrowIfNegative(requestedOptions.MaximumSourceLength);
+        if (requestedOptions.MaximumSourceLength > 0 && text.Length > requestedOptions.MaximumSourceLength)
+        {
+            throw new SyntaxException(
+                $"compilation failed: expression exceeds maximum source length of {requestedOptions.MaximumSourceLength}");
+        }
+
         this.options = requestedOptions with
         {
             DisabledBuiltins = new HashSet<string>(requestedOptions.DisabledBuiltins, StringComparer.Ordinal),

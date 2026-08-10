@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using Expr.Configuration;
+using Expr.Execution;
 using Expr.Runtime;
-using Expr.Syntax;
 using Expr.Types;
 
 namespace Expr.NativeAot;
@@ -10,6 +11,8 @@ namespace Expr.NativeAot;
 internal static class Program
 {
     private static readonly IReadOnlyList<long> SampleScores = Array.AsReadOnly([2L, 3L, 5L]);
+    private const string SampleExpression =
+        "answer == 42 && name startsWith 'Ad' && all(scores, # > 0) && totals['accepted'] == answer";
 
     private static int Main()
     {
@@ -28,30 +31,41 @@ internal static class Program
             "Ada",
             SampleScores,
             new Dictionary<string, long> { ["accepted"] = 42L });
-        SyntaxTree tree = new SyntaxParser().Parse("answer == 42 && name == 'Ada'");
-        var visitor = new CountingVisitor();
-        SyntaxWalker.Walk(tree.Root, visitor);
-        var scores = (IExprArray)schema.Read(environment, "scores")!;
-        var totals = (IExprMap)schema.Read(environment, "totals")!;
-        var expectedScores = new ExprArray([2L, 3L, 5L]);
-        var expectedTotals = new ExprMap([new KeyValuePair<object?, object?>("accepted", 42L)]);
+        ExprConfiguration configuration = ExprConfiguration.Default
+            .WithEnvironment(schema)
+            .WithExpectedType(ExprTypes.Boolean, warnOnAny: true)
+            .WithMemoryBudget(32_768)
+            .WithMaximumNodeCount(256)
+            .WithMaximumCheckDepth(64);
+        CompiledExpression expression = ExprEngine.Compile(SampleExpression, configuration);
+        ExprEvaluationResult result = ExprEngine.RunDetailed(
+            expression,
+            environment,
+            new ExprEvaluationOptions
+            {
+                MemoryBudget = 32_768,
+                WorkBudget = 10_000,
+                MaximumStackDepth = 256,
+                MaximumScopeDepth = 32,
+                MaximumCollectionLength = 1_024,
+                MaximumRegularExpressionLength = 1_024,
+                RegularExpressionTimeout = TimeSpan.FromMilliseconds(100),
+            });
 
         if (schema.EnvironmentType != typeof(SampleEnvironment) ||
             schema.Members.Count != 4 ||
-            schema.Read(environment, "answer") is not 42L ||
-            !string.Equals(schema.Read(environment, "name") as string, "Ada", StringComparison.Ordinal) ||
-            visitor.Count != 7 ||
-            !ExprValue.Equal(scores, expectedScores) ||
-            !ExprValue.Equal(totals, expectedTotals) ||
-            !totals.TryGetValue("accepted", out object? accepted) ||
-            accepted is not 42L)
+            result.Value is not true ||
+            result.WorkUsed is 0 ||
+            result.WorkUsed > 10_000 ||
+            result.MemoryUsed > 32_768)
         {
             return 1;
         }
 
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
-            $"Expr.NativeAot smoke passed: {visitor.Count} nodes, {schema.Members.Count} members."));
+            $"Expr.NativeAot evaluation passed: {expression.Program.Instructions.Count} instructions, " +
+            $"{result.WorkUsed} work units, {result.MemoryUsed} memory units."));
         return 0;
     }
 
@@ -60,15 +74,4 @@ internal static class Program
         string Name,
         IReadOnlyList<long> Scores,
         IReadOnlyDictionary<string, long> Totals);
-
-    private sealed class CountingVisitor : ISyntaxVisitor
-    {
-        public int Count { get; private set; }
-
-        public void Visit(SyntaxNode node)
-        {
-            ArgumentNullException.ThrowIfNull(node);
-            Count++;
-        }
-    }
 }

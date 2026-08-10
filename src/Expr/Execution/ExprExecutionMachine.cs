@@ -19,10 +19,10 @@ internal sealed class ExprExecutionMachine
     private readonly ExprEvaluationOptions options;
     private readonly CancellationToken cancellationToken;
     private readonly List<object?> stack = [];
-    private readonly List<PredicateScope> scopes = [];
     private readonly object?[] variables;
-    private readonly Dictionary<int, MutableProfile> profiles = [];
-    private readonly Stack<ActiveProfile> activeProfiles = [];
+    private List<PredicateScope>? scopes;
+    private Dictionary<int, MutableProfile>? profiles;
+    private Stack<ActiveProfile>? activeProfiles;
     private ulong memoryUsed;
     private ulong workUsed;
     private int instructionPointer;
@@ -40,7 +40,23 @@ internal sealed class ExprExecutionMachine
         variables = new object?[program.VariableCount];
     }
 
-    internal ExprEvaluationResult Run()
+    internal object? RunValue() => Execute();
+
+    internal ExprEvaluationResult RunDetailed()
+    {
+        object? value = Execute();
+        IEnumerable<ExprProfileSample> samples = profiles is null
+            ? []
+            : profiles.Values
+                .OrderBy(static profile => profile.Point.Id)
+                .Select(static profile => new ExprProfileSample(
+                    profile.Point,
+                    TimeSpan.FromTicks(profile.ElapsedTicks),
+                    profile.InvocationCount));
+        return new ExprEvaluationResult(value, memoryUsed, workUsed, samples);
+    }
+
+    private object? Execute()
     {
         try
         {
@@ -53,12 +69,12 @@ internal sealed class ExprExecutionMachine
                 Dispatch(currentIndex, instruction);
             }
 
-            if (scopes.Count is not 0)
+            if (scopes?.Count is > 0)
             {
                 throw Error("program ended with an open predicate scope");
             }
 
-            if (activeProfiles.Count is not 0)
+            if (activeProfiles?.Count is > 0)
             {
                 throw Error("program ended with an open profile scope");
             }
@@ -69,14 +85,7 @@ internal sealed class ExprExecutionMachine
                     $"program ended with an invalid stack depth of {stack.Count.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            object? value = Pop();
-            IEnumerable<ExprProfileSample> samples = profiles.Values
-                .OrderBy(static profile => profile.Point.Id)
-                .Select(static profile => new ExprProfileSample(
-                    profile.Point,
-                    TimeSpan.FromTicks(profile.ElapsedTicks),
-                    profile.InvocationCount));
-            return new ExprEvaluationResult(value, memoryUsed, workUsed, samples);
+            return Pop();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -254,7 +263,7 @@ internal sealed class ExprExecutionMachine
                     ExprValue.Equal(left, right) || ExprValue.Less(right, left));
                 break;
             case ExprOpcode.OpAdd:
-                Binary(ExprExecutionOperations.Add);
+                ExecuteAdd();
                 break;
             case ExprOpcode.OpSubtract:
                 Binary(ExprExecutionOperations.Subtract);
@@ -298,6 +307,7 @@ internal sealed class ExprExecutionMachine
                     object? from = Pop();
                     object? to = Pop();
                     object? target = Pop();
+                    ChargeMemory(ExprExecutionOperations.SliceAllocationCost(target, from, to));
                     Push(ExprExecutionOperations.Slice(target, from, to));
                     break;
                 }
@@ -441,6 +451,21 @@ internal sealed class ExprExecutionMachine
         Push(new ExprArray(values));
     }
 
+    private void ExecuteAdd()
+    {
+        object? right = Pop();
+        object? left = Pop();
+        if (left is string leftText && right is string rightText)
+        {
+            ulong cost = checked(
+                (ulong)Encoding.UTF8.GetByteCount(leftText) +
+                (ulong)Encoding.UTF8.GetByteCount(rightText));
+            ChargeMemory(cost);
+        }
+
+        Push(ExprExecutionOperations.Add(left, right));
+    }
+
     private void ExecuteConstantMatch(ExprRegularExpressionOperand expression)
     {
         object? input = Pop();
@@ -472,6 +497,7 @@ internal sealed class ExprExecutionMachine
                 throw Error("safe call target is not an Expr function");
             }
 
+            EnsureMemoryAvailable(function.EstimateMemoryCost(arguments));
             ExprInvocationResult result = function.Invoke(arguments);
             ChargeMemory(result.MemoryCost);
             Push(result.Value);
@@ -488,7 +514,9 @@ internal sealed class ExprExecutionMachine
     {
         cancellationToken.ThrowIfCancellationRequested();
         object?[] arguments = PopArguments(argumentCount);
-        ExprInvocationResult result = program.Functions[functionIndex].Invoke(arguments);
+        ExprFunction function = program.Functions[functionIndex];
+        EnsureMemoryAvailable(function.EstimateMemoryCost(arguments));
+        ExprInvocationResult result = function.Invoke(arguments);
         cancellationToken.ThrowIfCancellationRequested();
         ChargeMemory(result.MemoryCost);
         Push(result.Value);
@@ -595,6 +623,7 @@ internal sealed class ExprExecutionMachine
 
     private void BeginScope(object? source)
     {
+        scopes ??= [];
         if (scopes.Count >= options.MaximumScopeDepth)
         {
             throw Error("predicate scope depth exceeded");
@@ -628,12 +657,17 @@ internal sealed class ExprExecutionMachine
 
     private void EndScope()
     {
-        _ = CurrentScope();
+        if (scopes is null || scopes.Count is 0)
+        {
+            throw Error("predicate scope underflow");
+        }
+
         scopes.RemoveAt(scopes.Count - 1);
     }
 
     private void ProfileStart(ExprProfilePoint point)
     {
+        activeProfiles ??= new Stack<ActiveProfile>();
         if (activeProfiles.Count >= options.MaximumScopeDepth)
         {
             throw Error("profile scope depth exceeded");
@@ -646,7 +680,9 @@ internal sealed class ExprExecutionMachine
 
     private void ProfileEnd(ExprProfilePoint point)
     {
-        if (!activeProfiles.TryPop(out ActiveProfile active) || active.Point.Id != point.Id)
+        if (activeProfiles is null ||
+            !activeProfiles.TryPop(out ActiveProfile active) ||
+            active.Point.Id != point.Id)
         {
             throw Error("profile scope is corrupt");
         }
@@ -657,6 +693,7 @@ internal sealed class ExprExecutionMachine
         }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(active.StartTimestamp);
+        profiles ??= new Dictionary<int, MutableProfile>();
         if (!profiles.TryGetValue(point.Id, out MutableProfile? profile))
         {
             profile = new MutableProfile(point);
@@ -737,7 +774,7 @@ internal sealed class ExprExecutionMachine
 
     private PredicateScope CurrentScope()
     {
-        if (scopes.Count is 0)
+        if (scopes is null || scopes.Count is 0)
         {
             throw Error("predicate scope underflow");
         }
@@ -752,13 +789,19 @@ internal sealed class ExprExecutionMachine
             return;
         }
 
-        if (options.MemoryBudget is not 0 &&
+        EnsureMemoryAvailable(amount);
+
+        memoryUsed = checked(memoryUsed + amount);
+    }
+
+    private void EnsureMemoryAvailable(ulong amount)
+    {
+        if (amount is not 0 &&
+            options.MemoryBudget is not 0 &&
             (amount >= options.MemoryBudget || memoryUsed >= options.MemoryBudget - amount))
         {
             throw Error("memory budget exceeded");
         }
-
-        memoryUsed = checked(memoryUsed + amount);
     }
 
     private void ChargeWork()
@@ -852,7 +895,7 @@ internal sealed class ExprExecutionMachine
             null => Error("nil"),
             ExprErrorOperand error => Error(error.Message),
             Exception exception => exception,
-            _ => Error(value.ToString() ?? string.Empty),
+            _ => Error(ExprDisplay.Value(value)),
         };
     }
 
