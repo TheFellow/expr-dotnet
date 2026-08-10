@@ -15,10 +15,8 @@ Expr targets .NET 10 and C# 14.
 
 ## Install
 
-While the package is pre-release:
-
 ```sh
-dotnet add package Expr --prerelease
+dotnet add package Expr
 ```
 
 ## Quick start
