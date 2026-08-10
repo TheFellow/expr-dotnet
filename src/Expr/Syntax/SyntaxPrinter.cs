@@ -274,13 +274,13 @@ public static class SyntaxPrinter
                         builder.Append('[');
                         if (slice.From is not null)
                         {
-                            AppendNode(builder, slice.From, depth + 1);
+                            AppendGroupedExpression(builder, slice.From, depth + 1);
                         }
 
                         builder.Append(':');
                         if (slice.To is not null)
                         {
-                            AppendNode(builder, slice.To, depth + 1);
+                            AppendGroupedExpression(builder, slice.To, depth + 1);
                         }
 
                         builder.Append(']');
@@ -317,7 +317,7 @@ public static class SyntaxPrinter
                         builder.Append("let ");
                         builder.Append(variable.Name);
                         builder.Append(" = ");
-                        AppendNode(builder, variable.Value, depth + 1);
+                        AppendGroupedExpression(builder, variable.Value, depth + 1);
                         builder.Append("; ");
                         AppendNode(builder, variable.Body, depth + 1);
                         break;
@@ -360,7 +360,7 @@ public static class SyntaxPrinter
                 builder.Append(' ');
             }
 
-            var wrap = unary.Operand is ConditionalNode
+            var wrap = unary.Operand is ConditionalNode or VariableDeclaratorNode or SequenceNode
                 || unary.Operand is BinaryNode binary
                 && GetBinaryOperator(binary.Operator).Precedence < precedence;
             AppendPossiblyParenthesized(builder, unary.Operand, wrap, depth + 1);
@@ -371,9 +371,9 @@ public static class SyntaxPrinter
             if (binary.Operator == "..")
             {
                 var range = GetBinaryOperator(binary.Operator);
-                var rangeLeftWrap = binary.Left is ConditionalNode
+                var rangeLeftWrap = binary.Left is ConditionalNode or VariableDeclaratorNode or SequenceNode
                     || binary.Left is BinaryNode left && GetBinaryOperator(left.Operator).Precedence < range.Precedence;
-                var rangeRightWrap = binary.Right is ConditionalNode
+                var rangeRightWrap = binary.Right is ConditionalNode or VariableDeclaratorNode or SequenceNode
                     || binary.Right is BinaryNode right && GetBinaryOperator(right.Operator).Precedence <= range.Precedence;
                 AppendPossiblyParenthesized(builder, binary.Left, rangeLeftWrap, depth + 1);
                 builder.Append("..");
@@ -382,7 +382,7 @@ public static class SyntaxPrinter
             }
 
             var current = GetBinaryOperator(binary.Operator);
-            var leftWrap = binary.Left is ConditionalNode;
+            var leftWrap = binary.Left is ConditionalNode or VariableDeclaratorNode or SequenceNode;
             if (binary.Left is UnaryNode leftUnary)
             {
                 leftWrap |= GetUnaryPrecedence(leftUnary.Operator) < current.Precedence;
@@ -397,7 +397,7 @@ public static class SyntaxPrinter
                     || IsBoolean(leftBinary.Operator) && leftBinary.Operator != binary.Operator;
             }
 
-            var rightWrap = binary.Right is ConditionalNode;
+            var rightWrap = binary.Right is ConditionalNode or VariableDeclaratorNode or SequenceNode;
             if (binary.Right is BinaryNode rightBinary)
             {
                 var right = GetBinaryOperator(rightBinary.Operator);
@@ -432,7 +432,7 @@ public static class SyntaxPrinter
             }
 
             builder.Append(member.Optional ? "?.[" : "[");
-            AppendNode(builder, member.Property, depth + 1);
+            AppendGroupedExpression(builder, member.Property, depth + 1);
             builder.Append(']');
         }
 
@@ -441,7 +441,7 @@ public static class SyntaxPrinter
             if (!conditional.IsTernary)
             {
                 builder.Append("if ");
-                AppendNode(builder, conditional.Condition, depth + 1);
+                AppendGroupedExpression(builder, conditional.Condition, depth + 1);
                 builder.Append(" { ");
                 AppendNode(builder, conditional.WhenTrue, depth + 1);
                 builder.Append(" } else ");
@@ -459,11 +459,23 @@ public static class SyntaxPrinter
                 return;
             }
 
-            AppendPossiblyParenthesized(builder, conditional.Condition, conditional.Condition is ConditionalNode, depth + 1);
+            AppendPossiblyParenthesized(
+                builder,
+                conditional.Condition,
+                conditional.Condition is ConditionalNode or VariableDeclaratorNode or SequenceNode,
+                depth + 1);
             builder.Append(" ? ");
-            AppendPossiblyParenthesized(builder, conditional.WhenTrue, conditional.WhenTrue is ConditionalNode, depth + 1);
+            AppendPossiblyParenthesized(
+                builder,
+                conditional.WhenTrue,
+                conditional.WhenTrue is ConditionalNode or VariableDeclaratorNode or SequenceNode,
+                depth + 1);
             builder.Append(" : ");
-            AppendPossiblyParenthesized(builder, conditional.WhenFalse, conditional.WhenFalse is ConditionalNode, depth + 1);
+            AppendPossiblyParenthesized(
+                builder,
+                conditional.WhenFalse,
+                conditional.WhenFalse is ConditionalNode or VariableDeclaratorNode or SequenceNode,
+                depth + 1);
         }
 
         private void AppendPair(StringBuilder builder, PairNode pair, int depth)
@@ -487,7 +499,7 @@ public static class SyntaxPrinter
             }
 
             builder.Append(": ");
-            AppendNode(builder, pair.Value, depth + 1);
+            AppendGroupedExpression(builder, pair.Value, depth + 1);
         }
 
         private void AppendArguments(StringBuilder builder, IReadOnlyList<SyntaxNode> arguments, int depth)
@@ -507,13 +519,21 @@ public static class SyntaxPrinter
                     builder.Append(separator);
                 }
 
-                AppendNode(builder, nodes[index], depth + 1);
+                AppendGroupedExpression(builder, nodes[index], depth + 1);
             }
         }
 
+        private void AppendGroupedExpression(StringBuilder builder, SyntaxNode node, int depth) =>
+            AppendPossiblyParenthesized(
+                builder,
+                node,
+                node is VariableDeclaratorNode or SequenceNode,
+                depth);
+
         private void AppendPostfixTarget(StringBuilder builder, SyntaxNode target, int depth)
         {
-            var wrap = target is BinaryNode or ConditionalNode or VariableDeclaratorNode or SequenceNode;
+            var wrap = target is NilNode or IntegerNode or FloatNode or BooleanNode or ConstantNode or UnaryNode or
+                BinaryNode or ConditionalNode or VariableDeclaratorNode or SequenceNode;
             AppendPossiblyParenthesized(builder, target, wrap, depth);
         }
 
