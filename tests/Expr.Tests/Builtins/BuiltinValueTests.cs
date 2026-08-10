@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using Expr.Builtins;
 using Expr.Runtime;
 using Xunit;
@@ -22,6 +24,30 @@ public sealed class BuiltinValueTests
         Assert.Equal(5.5D, Invoke("float", "5.5"));
         Assert.Equal("true", Invoke("string", true));
         Assert.Equal(long.MinValue, Invoke("abs", long.MinValue));
+    }
+
+    [Fact]
+    public void String_uses_go_style_structural_collection_formatting()
+    {
+        Assert.Equal("[1 two [true <nil>]]", Invoke(
+            "string",
+            (object?)new object?[] { 1L, "two", new object?[] { true, null } }));
+        Assert.Equal("map[a:1 b:[2 3]]", Invoke(
+            "string",
+            new Dictionary<string, object?>
+            {
+                ["b"] = new[] { 2, 3 },
+                ["a"] = 1,
+            }));
+    }
+
+    [Fact]
+    public void String_collection_formatting_is_cycle_safe()
+    {
+        var cycle = new ArrayList();
+        cycle.Add(cycle);
+
+        Assert.Equal("[<cycle>]", Invoke("string", cycle));
     }
 
     [Fact]

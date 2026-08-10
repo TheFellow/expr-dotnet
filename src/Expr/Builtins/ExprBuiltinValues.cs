@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using Expr.Runtime;
 
@@ -198,7 +200,127 @@ internal static class ExprBuiltinValues
         _ => value.GetType().Name,
     };
 
-    private static string Format(object? value) => value switch
+    private static string Format(object? value)
+    {
+        const int maximumDepth = 10_000;
+        const int maximumLength = 1_000_000;
+        var result = new StringBuilder();
+        var activeCollections = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var work = new Stack<FormatFrame>();
+        work.Push(FormatFrame.Value(value, 0));
+
+        while (work.Count > 0)
+        {
+            FormatFrame frame = work.Pop();
+            if (frame.Kind is FormatFrameKind.Text)
+            {
+                AppendBounded(result, frame.Text!, maximumLength);
+                continue;
+            }
+
+            if (frame.Kind is FormatFrameKind.ExitCollection)
+            {
+                _ = activeCollections.Remove(frame.Item!);
+                continue;
+            }
+
+            object? item = frame.Item;
+            if (ExprCollections.TryAsArray(item, out IExprArray? array) && array is not null)
+            {
+                PushArray(array, item!, frame.Depth, result, work, activeCollections, maximumDepth, maximumLength);
+                continue;
+            }
+
+            if (ExprCollections.TryAsMap(item, out IExprMap? map) && map is not null)
+            {
+                PushMap(map, item!, frame.Depth, result, work, activeCollections, maximumDepth, maximumLength);
+                continue;
+            }
+
+            AppendBounded(result, FormatScalar(item), maximumLength);
+        }
+
+        return result.ToString();
+    }
+
+    private static void PushArray(
+        IExprArray array,
+        object identity,
+        int depth,
+        StringBuilder result,
+        Stack<FormatFrame> work,
+        HashSet<object> activeCollections,
+        int maximumDepth,
+        int maximumLength)
+    {
+        if (depth >= maximumDepth)
+        {
+            throw new ExprRuntimeException($"string formatting exceeds maximum depth of {maximumDepth}");
+        }
+
+        if (!activeCollections.Add(identity))
+        {
+            AppendBounded(result, "<cycle>", maximumLength);
+            return;
+        }
+
+        AppendBounded(result, "[", maximumLength);
+        work.Push(FormatFrame.Exit(identity));
+        work.Push(FormatFrame.TextValue("]"));
+        for (var index = array.Count - 1; index >= 0; index--)
+        {
+            work.Push(FormatFrame.Value(array[index], depth + 1));
+            if (index > 0)
+            {
+                work.Push(FormatFrame.TextValue(" "));
+            }
+        }
+    }
+
+    private static void PushMap(
+        IExprMap map,
+        object identity,
+        int depth,
+        StringBuilder result,
+        Stack<FormatFrame> work,
+        HashSet<object> activeCollections,
+        int maximumDepth,
+        int maximumLength)
+    {
+        if (depth >= maximumDepth)
+        {
+            throw new ExprRuntimeException($"string formatting exceeds maximum depth of {maximumDepth}");
+        }
+
+        if (!activeCollections.Add(identity))
+        {
+            AppendBounded(result, "<cycle>", maximumLength);
+            return;
+        }
+
+        List<KeyValuePair<object?, object?>> entries = map.ToList();
+        entries.Sort(static (left, right) => string.CompareOrdinal(
+            StableMapKey(left.Key),
+            StableMapKey(right.Key)));
+        AppendBounded(result, "map[", maximumLength);
+        work.Push(FormatFrame.Exit(identity));
+        work.Push(FormatFrame.TextValue("]"));
+        for (var index = entries.Count - 1; index >= 0; index--)
+        {
+            KeyValuePair<object?, object?> entry = entries[index];
+            work.Push(FormatFrame.Value(entry.Value, depth + 1));
+            work.Push(FormatFrame.TextValue(":"));
+            work.Push(FormatFrame.Value(entry.Key, depth + 1));
+            if (index > 0)
+            {
+                work.Push(FormatFrame.TextValue(" "));
+            }
+        }
+    }
+
+    private static string StableMapKey(object? key) => string.Concat(TypeNameOf(key), "\0", FormatScalar(key));
+
+    private static string FormatScalar(object? value) => value switch
     {
         null => "<nil>",
         bool boolean => boolean ? "true" : "false",
@@ -208,6 +330,32 @@ internal static class ExprBuiltinValues
         IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
         _ => value.ToString() ?? string.Empty,
     };
+
+    private static void AppendBounded(StringBuilder builder, string value, int maximumLength)
+    {
+        if (value.Length > maximumLength - builder.Length)
+        {
+            throw new ExprRuntimeException($"string formatting exceeds maximum length of {maximumLength}");
+        }
+
+        _ = builder.Append(value);
+    }
+
+    private enum FormatFrameKind
+    {
+        Value,
+        Text,
+        ExitCollection,
+    }
+
+    private readonly record struct FormatFrame(FormatFrameKind Kind, object? Item, string? Text, int Depth)
+    {
+        internal static FormatFrame Value(object? item, int depth) => new(FormatFrameKind.Value, item, null, depth);
+
+        internal static FormatFrame TextValue(string text) => new(FormatFrameKind.Text, null, text, 0);
+
+        internal static FormatFrame Exit(object item) => new(FormatFrameKind.ExitCollection, item, null, 0);
+    }
 
     private static ExprRuntimeException Error(string name, object? value) =>
         new($"invalid argument for {name} (type {TypeNameOf(value)})");
