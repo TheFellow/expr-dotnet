@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Expr.Types;
 using Xunit;
 
 namespace Expr.Tests.Runtime;
 
+[RequiresUnreferencedCode("Exercises the explicitly reflection-based CLR type mapping API.")]
 public sealed class TypeDescriptorTests
 {
     [Fact]

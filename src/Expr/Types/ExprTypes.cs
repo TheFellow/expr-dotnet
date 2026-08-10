@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace Expr.Types;
@@ -50,11 +51,13 @@ public static class ExprTypes
     /// <summary>Gets the Expr descriptor for a CLR type.</summary>
     /// <typeparam name="T">The CLR type to describe.</typeparam>
     /// <returns>The semantic descriptor.</returns>
+    [RequiresUnreferencedCode("Mapping arbitrary CLR types inspects collection and delegate metadata. Use explicit Expr type descriptors for trimming and Native AOT.")]
     public static ExprTypeDescriptor FromClrType<T>() => FromClrType(typeof(T));
 
     /// <summary>Gets the Expr descriptor for a CLR type.</summary>
     /// <param name="type">The CLR type to describe.</param>
     /// <returns>The semantic descriptor.</returns>
+    [RequiresUnreferencedCode("Mapping arbitrary CLR types inspects collection and delegate metadata. Use explicit Expr type descriptors for trimming and Native AOT.")]
     public static ExprTypeDescriptor FromClrType(Type type)
     {
         ArgumentNullException.ThrowIfNull(type);

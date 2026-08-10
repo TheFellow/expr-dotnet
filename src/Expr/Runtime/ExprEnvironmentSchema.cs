@@ -104,6 +104,7 @@ public sealed class ExprEnvironmentSchema
     /// <summary>Creates a strict schema over a string-keyed environment dictionary.</summary>
     /// <param name="environment">The environment whose current keys define the schema.</param>
     /// <returns>The schema.</returns>
+    [RequiresUnreferencedCode("Dictionary value types are inferred from runtime CLR metadata. Build an explicitly typed schema for trimming and Native AOT.")]
     public static ExprEnvironmentSchema FromDictionary(IReadOnlyDictionary<string, object?> environment)
     {
         ArgumentNullException.ThrowIfNull(environment);
@@ -225,20 +226,79 @@ public sealed class ExprEnvironmentSchemaBuilder<TEnvironment>
     /// <typeparam name="TValue">The member value type.</typeparam>
     /// <param name="name">The expression-visible name.</param>
     /// <param name="accessor">The strongly typed accessor.</param>
-    /// <param name="type">An optional semantic type override.</param>
+    /// <param name="type">The semantic type exposed to Expr.</param>
     /// <returns>This builder.</returns>
     public ExprEnvironmentSchemaBuilder<TEnvironment> Member<TValue>(
         string name,
         Func<TEnvironment, TValue> accessor,
-        ExprTypeDescriptor? type = null)
+        ExprTypeDescriptor type)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(accessor);
+        ArgumentNullException.ThrowIfNull(type);
         members.Add(new ExprEnvironmentMember(
             name,
-            type ?? ExprTypes.FromClrType<TValue>(),
+            type,
             environment => accessor((TEnvironment)environment)));
         return this;
+    }
+
+    /// <summary>Adds a named environment member and discovers its semantic type from CLR metadata.</summary>
+    /// <remarks>
+    /// Native AOT and trimmed applications should call the overload that accepts an explicit
+    /// <see cref="ExprTypeDescriptor"/>. That overload does not inspect <typeparamref name="TValue"/>.
+    /// </remarks>
+    /// <typeparam name="TValue">The member value type.</typeparam>
+    /// <param name="name">The expression-visible name.</param>
+    /// <param name="accessor">The strongly typed accessor.</param>
+    /// <returns>This builder.</returns>
+    [RequiresUnreferencedCode("Inferring an Expr type inspects CLR collection and delegate metadata. Pass an explicit ExprTypeDescriptor for trimming and Native AOT.")]
+    public ExprEnvironmentSchemaBuilder<TEnvironment> Member<TValue>(
+        string name,
+        Func<TEnvironment, TValue> accessor) =>
+        Member(name, accessor, ExprTypes.FromClrType<TValue>());
+
+    /// <summary>Adds a generic read-only list member through a reflection-free Expr array adapter.</summary>
+    /// <typeparam name="TValue">The declared element type.</typeparam>
+    /// <param name="name">The expression-visible name.</param>
+    /// <param name="accessor">The strongly typed list accessor.</param>
+    /// <param name="elementType">The semantic element type.</param>
+    /// <returns>This builder.</returns>
+    public ExprEnvironmentSchemaBuilder<TEnvironment> ArrayMember<TValue>(
+        string name,
+        Func<TEnvironment, IReadOnlyList<TValue>> accessor,
+        ExprTypeDescriptor elementType)
+    {
+        ArgumentNullException.ThrowIfNull(accessor);
+        ArgumentNullException.ThrowIfNull(elementType);
+        return Member(
+            name,
+            environment => ExprCollections.AsArray(accessor(environment)),
+            ExprTypes.ArrayOf(elementType));
+    }
+
+    /// <summary>Adds a generic read-only dictionary member through a reflection-free Expr map adapter.</summary>
+    /// <typeparam name="TKey">The declared key type.</typeparam>
+    /// <typeparam name="TValue">The declared value type.</typeparam>
+    /// <param name="name">The expression-visible name.</param>
+    /// <param name="accessor">The strongly typed dictionary accessor.</param>
+    /// <param name="keyType">The semantic key type.</param>
+    /// <param name="valueType">The semantic value type.</param>
+    /// <returns>This builder.</returns>
+    public ExprEnvironmentSchemaBuilder<TEnvironment> MapMember<TKey, TValue>(
+        string name,
+        Func<TEnvironment, IReadOnlyDictionary<TKey, TValue>> accessor,
+        ExprTypeDescriptor keyType,
+        ExprTypeDescriptor valueType)
+        where TKey : notnull
+    {
+        ArgumentNullException.ThrowIfNull(accessor);
+        ArgumentNullException.ThrowIfNull(keyType);
+        ArgumentNullException.ThrowIfNull(valueType);
+        return Member(
+            name,
+            environment => ExprCollections.AsMap(accessor(environment)),
+            new MapTypeDescriptor([], valueType, keyType));
     }
 
     /// <summary>Creates the immutable strict schema.</summary>

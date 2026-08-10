@@ -1,10 +1,8 @@
 using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Reflection;
 
 namespace Expr.Runtime;
 
@@ -150,17 +148,116 @@ public sealed class ExprMap : IExprMap
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
-/// <summary>Adapts common .NET collection contracts to Expr collection access.</summary>
+/// <summary>
+/// Exposes an <see cref="IReadOnlyList{T}"/> through Expr's array contract without reflection.
+/// </summary>
+/// <remarks>The adapter is a live read-only view; it does not snapshot the source collection.</remarks>
+/// <typeparam name="T">The declared element type.</typeparam>
+public sealed class ExprReadOnlyListAdapter<T> : IExprArray
+{
+    private readonly IReadOnlyList<T> values;
+
+    /// <summary>Initializes an adapter over a read-only list.</summary>
+    /// <param name="values">The list to expose.</param>
+    public ExprReadOnlyListAdapter(IReadOnlyList<T> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        this.values = values;
+    }
+
+    /// <inheritdoc />
+    public Type ElementType => typeof(T);
+
+    /// <inheritdoc />
+    public int Count => values.Count;
+
+    /// <inheritdoc />
+    public object? this[int index] => values[index];
+
+    /// <inheritdoc />
+    public IEnumerator<object?> GetEnumerator()
+    {
+        foreach (T value in values)
+        {
+            yield return value;
+        }
+    }
+
+    /// <inheritdoc />
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// <summary>
+/// Exposes an <see cref="IReadOnlyDictionary{TKey,TValue}"/> through Expr's map contract without reflection.
+/// </summary>
+/// <remarks>The adapter is a live read-only view; it does not snapshot the source collection.</remarks>
+/// <typeparam name="TKey">The declared key type.</typeparam>
+/// <typeparam name="TValue">The declared value type.</typeparam>
+public sealed class ExprReadOnlyDictionaryAdapter<TKey, TValue> : IExprMap
+    where TKey : notnull
+{
+    private readonly IReadOnlyDictionary<TKey, TValue> values;
+
+    /// <summary>Initializes an adapter over a read-only dictionary.</summary>
+    /// <param name="values">The dictionary to expose.</param>
+    public ExprReadOnlyDictionaryAdapter(IReadOnlyDictionary<TKey, TValue> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        this.values = values;
+    }
+
+    /// <inheritdoc />
+    public Type KeyType => typeof(TKey);
+
+    /// <inheritdoc />
+    public Type ValueType => typeof(TValue);
+
+    /// <inheritdoc />
+    public int Count => values.Count;
+
+    /// <inheritdoc />
+    public bool TryGetValue(object? key, out object? value)
+    {
+        if (key is TKey typedKey && values.TryGetValue(typedKey, out TValue? typedValue))
+        {
+            value = typedValue;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    /// <inheritdoc />
+    public IEnumerator<KeyValuePair<object?, object?>> GetEnumerator()
+    {
+        foreach ((TKey key, TValue value) in values)
+        {
+            yield return new KeyValuePair<object?, object?>(key, value);
+        }
+    }
+
+    /// <inheritdoc />
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// <summary>Adapts statically known .NET collection contracts to Expr collection access.</summary>
 public static class ExprCollections
 {
-    private static readonly ConcurrentDictionary<Type, Func<object, IExprArray?>> ReadOnlyListFactories = new();
-    private static readonly ConcurrentDictionary<Type, Func<object, IExprMap?>> ReadOnlyDictionaryFactories = new();
-    private static readonly MethodInfo CreateReadOnlyListFactoryMethod = typeof(ExprCollections)
-        .GetMethod(nameof(CreateReadOnlyListFactory), BindingFlags.NonPublic | BindingFlags.Static) ??
-        throw new InvalidOperationException("The read-only list adapter factory is unavailable.");
-    private static readonly MethodInfo CreateReadOnlyDictionaryFactoryMethod = typeof(ExprCollections)
-        .GetMethod(nameof(CreateReadOnlyDictionaryFactory), BindingFlags.NonPublic | BindingFlags.Static) ??
-        throw new InvalidOperationException("The read-only dictionary adapter factory is unavailable.");
+    /// <summary>Creates a reflection-free Expr array view over a generic read-only list.</summary>
+    /// <typeparam name="T">The declared element type.</typeparam>
+    /// <param name="values">The list to expose.</param>
+    /// <returns>The live read-only Expr array view.</returns>
+    public static ExprReadOnlyListAdapter<T> AsArray<T>(IReadOnlyList<T> values) => new(values);
+
+    /// <summary>Creates a reflection-free Expr map view over a generic read-only dictionary.</summary>
+    /// <typeparam name="TKey">The declared key type.</typeparam>
+    /// <typeparam name="TValue">The declared value type.</typeparam>
+    /// <param name="values">The dictionary to expose.</param>
+    /// <returns>The live read-only Expr map view.</returns>
+    public static ExprReadOnlyDictionaryAdapter<TKey, TValue> AsMap<TKey, TValue>(
+        IReadOnlyDictionary<TKey, TValue> values)
+        where TKey : notnull => new(values);
 
     /// <summary>Attempts to adapt a value to an Expr array.</summary>
     /// <param name="value">The host value.</param>
@@ -186,11 +283,8 @@ public static class ExprCollections
                 array = new ListAdapter(list);
                 return true;
             default:
-                Func<object, IExprArray?> factory = ReadOnlyListFactories.GetOrAdd(
-                    value.GetType(),
-                    static type => BuildReadOnlyListFactory(type));
-                array = factory(value);
-                return array is not null;
+                array = null;
+                return false;
         }
     }
 
@@ -215,11 +309,8 @@ public static class ExprCollections
                 map = new DictionaryAdapter(dictionary);
                 return true;
             default:
-                Func<object, IExprMap?> factory = ReadOnlyDictionaryFactories.GetOrAdd(
-                    value.GetType(),
-                    static type => BuildReadOnlyDictionaryFactory(type));
-                map = factory(value);
-                return map is not null;
+                map = null;
+                return false;
         }
     }
 
@@ -244,7 +335,7 @@ public static class ExprCollections
 
     private sealed class ListAdapter(IList list) : IExprArray
     {
-        public Type ElementType { get; } = GetListElementType(list.GetType()) ?? typeof(object);
+        public Type ElementType => typeof(object);
 
         public int Count => list.Count;
 
@@ -263,9 +354,9 @@ public static class ExprCollections
 
     private sealed class DictionaryAdapter(IDictionary dictionary) : IExprMap
     {
-        public Type KeyType { get; } = GetDictionaryTypes(dictionary.GetType()).Key;
+        public Type KeyType => typeof(object);
 
-        public Type ValueType { get; } = GetDictionaryTypes(dictionary.GetType()).Value;
+        public Type ValueType => typeof(object);
 
         public int Count => dictionary.Count;
 
@@ -303,107 +394,4 @@ public static class ExprCollections
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    private sealed class ReadOnlyListAdapter<T>(IReadOnlyList<T> list) : IExprArray
-    {
-        public Type ElementType => typeof(T);
-
-        public int Count => list.Count;
-
-        public object? this[int index] => list[index];
-
-        public IEnumerator<object?> GetEnumerator()
-        {
-            foreach (T value in list)
-            {
-                yield return value;
-            }
-        }
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-    }
-
-    private sealed class ReadOnlyDictionaryAdapter<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> dictionary) : IExprMap
-        where TKey : notnull
-    {
-        public Type KeyType => typeof(TKey);
-
-        public Type ValueType => typeof(TValue);
-
-        public int Count => dictionary.Count;
-
-        public bool TryGetValue(object? key, out object? value)
-        {
-            if (key is TKey typedKey && dictionary.TryGetValue(typedKey, out TValue? typedValue))
-            {
-                value = typedValue;
-                return true;
-            }
-
-            value = null;
-            return false;
-        }
-
-        public IEnumerator<KeyValuePair<object?, object?>> GetEnumerator()
-        {
-            foreach ((TKey key, TValue value) in dictionary)
-            {
-                yield return new KeyValuePair<object?, object?>(key, value);
-            }
-        }
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-    }
-
-    private static Type? GetListElementType(Type type) => type.GetInterfaces().Append(type)
-        .FirstOrDefault(static candidate =>
-            candidate.IsGenericType &&
-            (candidate.GetGenericTypeDefinition() == typeof(IList<>) ||
-             candidate.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)))
-        ?.GetGenericArguments()[0];
-
-    private static (Type Key, Type Value) GetDictionaryTypes(Type type)
-    {
-        Type? contract = type.GetInterfaces().Append(type)
-            .FirstOrDefault(static candidate =>
-                candidate.IsGenericType &&
-                (candidate.GetGenericTypeDefinition() == typeof(IDictionary<,>) ||
-                 candidate.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>)));
-        Type[]? arguments = contract?.GetGenericArguments();
-        return arguments is null ? (typeof(object), typeof(object)) : (arguments[0], arguments[1]);
-    }
-
-    private static Func<object, IExprArray?> BuildReadOnlyListFactory(Type type)
-    {
-        Type? elementType = GetListElementType(type);
-        if (elementType is null)
-        {
-            return static _ => null;
-        }
-
-        MethodInfo factory = CreateReadOnlyListFactoryMethod.MakeGenericMethod(elementType);
-        var adapter = factory.Invoke(null, null) as Func<object, IExprArray> ??
-            throw new InvalidOperationException("The read-only list adapter could not be created.");
-        return value => adapter(value);
-    }
-
-    private static Func<object, IExprArray> CreateReadOnlyListFactory<T>() =>
-        static value => new ReadOnlyListAdapter<T>((IReadOnlyList<T>)value);
-
-    private static Func<object, IExprMap?> BuildReadOnlyDictionaryFactory(Type type)
-    {
-        (Type key, Type value) = GetDictionaryTypes(type);
-        if (key == typeof(object) && value == typeof(object))
-        {
-            return static _ => null;
-        }
-
-        MethodInfo factory = CreateReadOnlyDictionaryFactoryMethod.MakeGenericMethod(key, value);
-        var adapter = factory.Invoke(null, null) as Func<object, IExprMap> ??
-            throw new InvalidOperationException("The read-only dictionary adapter could not be created.");
-        return value => adapter(value);
-    }
-
-    private static Func<object, IExprMap> CreateReadOnlyDictionaryFactory<TKey, TValue>()
-        where TKey : notnull =>
-        static value => new ReadOnlyDictionaryAdapter<TKey, TValue>((IReadOnlyDictionary<TKey, TValue>)value);
 }

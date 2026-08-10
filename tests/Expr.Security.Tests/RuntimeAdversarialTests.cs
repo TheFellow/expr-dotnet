@@ -38,12 +38,14 @@ public sealed class RuntimeAdversarialTests
     public void Array_metadata_access_does_not_enumerate_a_hostile_collection()
     {
         var hostile = new HostileReadOnlyList();
+        Assert.False(ExprCollections.TryAsArray(hostile, out _));
+        ExprReadOnlyListAdapter<object?> adapter = ExprCollections.AsArray(hostile);
 
-        int length = ExprValue.StorageLength(hostile);
+        int length = ExprValue.StorageLength(adapter);
 
         Assert.Equal(7, length);
         Assert.Equal(0, hostile.EnumerationAttempts);
-        Assert.Equal("requested", ExprValue.FetchIndex(hostile, 3));
+        Assert.Equal("requested", ExprValue.FetchIndex(adapter, 3));
         Assert.Equal(3, hostile.LastRequestedIndex);
     }
 
@@ -51,9 +53,11 @@ public sealed class RuntimeAdversarialTests
     public void Dictionary_membership_uses_typed_lookup_without_enumerating()
     {
         var hostile = new HostileReadOnlyDictionary();
+        Assert.False(ExprCollections.TryAsMap(hostile, out _));
+        ExprReadOnlyDictionaryAdapter<string, int> adapter = ExprCollections.AsMap(hostile);
 
-        Assert.True(ExprValue.In("allowed", hostile));
-        Assert.False(ExprValue.In(42, hostile));
+        Assert.True(ExprValue.In("allowed", adapter));
+        Assert.False(ExprValue.In(42, adapter));
 
         Assert.Equal(1, hostile.LookupAttempts);
         Assert.Equal(0, hostile.EnumerationAttempts);

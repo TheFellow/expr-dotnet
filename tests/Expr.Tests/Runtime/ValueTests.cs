@@ -144,10 +144,44 @@ public sealed class ValueTests
     {
         var sequence = new ReadOnlySequence<int>([1, 2, 3]);
         var map = new ReadOnlyMap<string, int>(new Dictionary<string, int> { ["a"] = 1 });
+        ExprReadOnlyListAdapter<int> arrayAdapter = ExprCollections.AsArray(sequence);
+        ExprReadOnlyDictionaryAdapter<string, int> mapAdapter = ExprCollections.AsMap(map);
 
-        Assert.Equal(3, ExprValue.StorageLength(sequence));
-        Assert.Equal(2, ExprValue.FetchIndex(sequence, 1));
-        Assert.True(ExprValue.In("a", map));
+        Assert.Equal(3, ExprValue.StorageLength(arrayAdapter));
+        Assert.Equal(2, ExprValue.FetchIndex(arrayAdapter, 1));
+        Assert.True(ExprValue.In("a", mapAdapter));
+        Assert.True(ExprValue.Equal(arrayAdapter, ExprCollections.AsArray<int>([1, 2, 3])));
+    }
+
+    [Fact]
+    [RequiresDynamicCode("Exercises collection contracts discovered from runtime types.")]
+    [RequiresUnreferencedCode("Exercises collection contracts discovered from runtime types.")]
+    public void Dynamic_collection_adapters_preserve_automatic_discovery_for_non_aot_hosts()
+    {
+        var sequence = new ReadOnlySequence<int>([1, 2, 3]);
+        var map = new ReadOnlyMap<string, int>(new Dictionary<string, int> { ["a"] = 1 });
+
+        Assert.True(ExprDynamicCollections.TryAsArray(sequence, out IExprArray? array));
+        Assert.True(ExprDynamicCollections.TryAsMap(map, out IExprMap? adaptedMap));
+        Assert.Equal(2, ExprValue.FetchIndex(array, 1));
+        Assert.True(ExprValue.In("a", adaptedMap));
+    }
+
+    [Fact]
+    public void Generic_collection_adapters_are_live_read_only_views()
+    {
+        var sequence = new List<int> { 1 };
+        var dictionary = new Dictionary<string, int> { ["a"] = 1 };
+        ExprReadOnlyListAdapter<int> arrayAdapter = ExprCollections.AsArray(sequence);
+        ExprReadOnlyDictionaryAdapter<string, int> mapAdapter = ExprCollections.AsMap(dictionary);
+
+        sequence.Add(2);
+        dictionary["a"] = 3;
+
+        Assert.Equal(2, arrayAdapter.Count);
+        Assert.Equal(2, arrayAdapter[1]);
+        Assert.True(mapAdapter.TryGetValue("a", out object? value));
+        Assert.Equal(3, value);
     }
 
     private sealed class ReadOnlySequence<T>(IReadOnlyList<T> values) : IReadOnlyList<T>
