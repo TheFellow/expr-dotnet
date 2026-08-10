@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using Expr.Runtime;
 
@@ -9,7 +10,7 @@ namespace Expr.Builtins;
 
 internal static class ExprBuiltinCollections
 {
-    private static readonly ConcurrentDictionary<(Type Type, string Name), Func<object, object?>?> MemberAccessors = new();
+    private static readonly ConcurrentDictionary<(Type Type, string Name), MemberAccess> MemberAccessors = new();
 
     public static object? MinMax(ReadOnlySpan<object?> arguments, bool maximum, ExprBuiltinOptions options)
     {
@@ -111,6 +112,18 @@ internal static class ExprBuiltinCollections
             return null;
         }
 
+        MemberAccess? memberAccess = null;
+        if (key is string memberName)
+        {
+            memberAccess = MemberAccessors.GetOrAdd(
+                (from.GetType(), memberName),
+                static pair => BuildMemberAccess(pair.Type, pair.Name));
+            if (memberAccess.Method is not null)
+            {
+                return BindMethod(memberAccess.Method, from);
+            }
+        }
+
         if (ExprCollections.TryAsArray(from, out IExprArray? array) && array is not null)
         {
             long requested = ExprBuiltinValues.RequireInteger(key, "get");
@@ -131,15 +144,9 @@ internal static class ExprBuiltinCollections
             return map.TryGetValue(key, out object? value) ? value : null;
         }
 
-        if (key is string memberName)
+        if (memberAccess?.Accessor is not null)
         {
-            Func<object, object?>? accessor = MemberAccessors.GetOrAdd(
-                (from.GetType(), memberName),
-                static pair => BuildMemberAccessor(pair.Type, pair.Name));
-            if (accessor is not null)
-            {
-                return accessor(from);
-            }
+            return memberAccess.Accessor(from);
         }
 
         return null;
@@ -316,7 +323,7 @@ internal static class ExprBuiltinCollections
         EnsureAllocation(array.Count, options);
         bool descending = arguments.Length == 2 && ParseOrder(arguments[1]) == "desc";
         object?[] values = array.ToArray();
-        Array.Sort(values, (left, right) => descending ? ExprValue.Compare(right, left) : ExprValue.Compare(left, right));
+        Array.Sort(values, (left, right) => descending ? CompareForSort(right, left) : CompareForSort(left, right));
         return Result(new ExprArray(values), values.Length);
     }
 
@@ -363,6 +370,16 @@ internal static class ExprBuiltinCollections
         }
     }
 
+    internal static int CompareForSort(object? left, object? right)
+    {
+        if (ExprValue.Less(left, right))
+        {
+            return -1;
+        }
+
+        return ExprValue.Less(right, left) ? 1 : 0;
+    }
+
     private static IExprMap RequireMap(object? value, string operation)
     {
         if (ExprCollections.TryAsMap(value, out IExprMap? map) && map is not null)
@@ -407,8 +424,22 @@ internal static class ExprBuiltinCollections
         }
     }
 
-    private static Func<object, object?>? BuildMemberAccessor(Type type, string name)
+    private static MemberAccess BuildMemberAccess(Type type, string name)
     {
+        MethodInfo[] methods = type
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Where(candidate => candidate.DeclaringType != typeof(object) &&
+                !candidate.IsSpecialName &&
+                !candidate.ContainsGenericParameters &&
+                string.Equals(candidate.Name, name, StringComparison.Ordinal) &&
+                candidate.GetParameters().All(static parameter =>
+                    !parameter.ParameterType.IsByRef && !parameter.IsOut))
+            .ToArray();
+        if (methods.Length == 1 && TryGetDelegateType(methods[0], out _))
+        {
+            return new MemberAccess(null, methods[0]);
+        }
+
         PropertyInfo? property = type
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .FirstOrDefault(candidate =>
@@ -419,7 +450,7 @@ internal static class ExprBuiltinCollections
             });
         if (property?.GetMethod is not null && property.GetIndexParameters().Length == 0)
         {
-            return property.GetValue;
+            return new MemberAccess(property.GetValue, null);
         }
 
         FieldInfo? field = type
@@ -432,10 +463,56 @@ internal static class ExprBuiltinCollections
             });
         if (field is null)
         {
+            return MemberAccess.None;
+        }
+
+        return new MemberAccess(instance => field.GetValue(instance), null);
+    }
+
+    private static Delegate? BindMethod(MethodInfo method, object instance)
+    {
+        if (!TryGetDelegateType(method, out Type? delegateType))
+        {
             return null;
         }
 
-        return instance => field.GetValue(instance);
+        try
+        {
+            return method.CreateDelegate(delegateType!, instance);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetDelegateType(MethodInfo method, out Type? delegateType)
+    {
+        ParameterInfo[] parameters = method.GetParameters();
+        if (parameters.Length > 16)
+        {
+            delegateType = null;
+            return false;
+        }
+
+        Type[] parameterTypes = parameters.Select(static parameter => parameter.ParameterType).ToArray();
+        try
+        {
+            delegateType = method.ReturnType == typeof(void)
+                ? Expression.GetActionType(parameterTypes)
+                : Expression.GetFuncType([.. parameterTypes, method.ReturnType]);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            delegateType = null;
+            return false;
+        }
+    }
+
+    private sealed record MemberAccess(Func<object, object?>? Accessor, MethodInfo? Method)
+    {
+        public static MemberAccess None { get; } = new(null, null);
     }
 
     private static ExprRuntimeException InvalidAggregate(string name, object? value) =>

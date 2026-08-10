@@ -61,6 +61,23 @@ public sealed class BuiltinCollectionTests
     }
 
     [Fact]
+    public void Get_returns_a_bound_cached_delegate_for_unambiguous_public_methods()
+    {
+        var value = new MemberFixture();
+
+        var callable = Assert.IsAssignableFrom<Delegate>(Invoke("get", value, nameof(MemberFixture.Add)));
+
+        Assert.Equal(45L, callable.DynamicInvoke(3L));
+    }
+
+    [Fact]
+    public void Get_does_not_expose_clr_collection_properties_as_expr_members()
+    {
+        Assert.Throws<ExprRuntimeException>(() => Invoke("get", new[] { 1, 2 }, "Length"));
+        Assert.Null(Invoke("get", new Dictionary<string, int>(), "Count"));
+    }
+
+    [Fact]
     public void Map_transforms_round_trip_and_duplicate_pairs_use_last_value()
     {
         var source = new Dictionary<string, object?> { ["foo"] = 1L, ["bar"] = 2L };
@@ -91,6 +108,36 @@ public sealed class BuiltinCollectionTests
         Assert.Equal([3, 2, 1], Values(Invoke("sort", new[] { 3, 1, 2 }, "desc")));
         Assert.Equal([1, 2, 3], source);
         Assert.Equal(4UL, library.Get("concat").Invoke([new[] { 1, 2 }, new[] { 3, 4 }]).MemoryCost);
+    }
+
+    [Fact]
+    public void Sort_treats_nan_as_unordered_like_go_less()
+    {
+        object? result = Invoke("sort", new[] { double.NaN, 2D, 1D });
+
+        object?[] values = Values(result);
+        Assert.Contains(double.NaN, values);
+        Assert.Contains(1D, values);
+        Assert.Contains(2D, values);
+    }
+
+    [Fact]
+    public void Group_by_keeps_nan_keys_distinct_and_charges_every_group_value()
+    {
+        ExprInvocationResult result = library.InvokePredicate(
+            "groupBy",
+            new[] { 1D, 2D },
+            new ExprBuiltinPredicateContext((_, _, _) => double.NaN));
+
+        IExprMap groups = Assert.IsAssignableFrom<IExprMap>(result.Value);
+        Assert.Equal(2, groups.Count);
+        Assert.Equal(2UL, result.MemoryCost);
+
+        var bounded = new ExprBuiltinLibrary(new ExprBuiltinOptions { MaximumAllocation = 1 });
+        Assert.Throws<ExprRuntimeException>(() => bounded.InvokePredicate(
+            "groupBy",
+            new[] { 1D, 2D },
+            new ExprBuiltinPredicateContext((item, _, _) => item)));
     }
 
     [Fact]
@@ -133,6 +180,8 @@ public sealed class BuiltinCollectionTests
 
         [ExprMember(Ignore = true)]
         public string Hidden => "secret";
+
+        public long Add(long value) => Value + value;
     }
 }
 #pragma warning restore CA1861

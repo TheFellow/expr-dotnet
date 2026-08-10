@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Expr.Runtime;
 
 namespace Expr.Builtins;
@@ -195,6 +197,7 @@ internal static class ExprBuiltinPredicates
         ExprBuiltinPredicate predicate,
         ExprBuiltinOptions options)
     {
+        ExprBuiltinCollections.EnsureAllocation(array.Count, options);
         var groups = new List<(object? Key, List<object?> Values)>();
         for (int index = 0; index < array.Count; index++)
         {
@@ -220,7 +223,7 @@ internal static class ExprBuiltinPredicates
                 new ExprArray(groups[index].Values));
         }
 
-        return Result(new ExprMap(entries), array.Count);
+        return Result(new BuiltinGroupMap(entries), array.Count);
     }
 
     private static ExprInvocationResult SortBy(
@@ -239,8 +242,8 @@ internal static class ExprBuiltinPredicates
         Array.Sort(values, (left, right) =>
         {
             int comparison = descending
-                ? ExprValue.Compare(right.Key, left.Key)
-                : ExprValue.Compare(left.Key, right.Key);
+                ? ExprBuiltinCollections.CompareForSort(right.Key, left.Key)
+                : ExprBuiltinCollections.CompareForSort(left.Key, right.Key);
             return comparison != 0 ? comparison : left.Index.CompareTo(right.Index);
         });
         var sorted = new object?[values.Length];
@@ -285,4 +288,39 @@ internal static class ExprBuiltinPredicates
             $"predicate should return bool (got {ExprBuiltinValues.TypeNameOf(value)})");
 
     private static ExprInvocationResult Result(object? value, long cost) => new(value, checked((ulong)cost));
+
+    private sealed class BuiltinGroupMap : IExprMap
+    {
+        private readonly IReadOnlyList<KeyValuePair<object?, object?>> entries;
+
+        public BuiltinGroupMap(IEnumerable<KeyValuePair<object?, object?>> entries)
+        {
+            this.entries = Array.AsReadOnly(entries.ToArray());
+        }
+
+        public Type KeyType => typeof(object);
+
+        public Type ValueType => typeof(object);
+
+        public int Count => entries.Count;
+
+        public bool TryGetValue(object? key, out object? value)
+        {
+            foreach ((object? candidate, object? candidateValue) in entries)
+            {
+                if (ExprValue.Equal(candidate, key))
+                {
+                    value = candidateValue;
+                    return true;
+                }
+            }
+
+            value = null;
+            return false;
+        }
+
+        public IEnumerator<KeyValuePair<object?, object?>> GetEnumerator() => entries.GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 }

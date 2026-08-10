@@ -9,6 +9,18 @@ namespace Expr.Tests.Runtime;
 
 public sealed class ValueTests
 {
+    [Fact]
+    public void Read_only_byte_memory_has_expr_array_and_value_equality_semantics()
+    {
+        ReadOnlyMemory<byte> left = new byte[] { 1, 2, 3 };
+        ReadOnlyMemory<byte> right = new byte[] { 1, 2, 3 };
+
+        Assert.Equal(ExprValueKind.Array, ExprValue.Classify(left));
+        Assert.True(ExprValue.Equal(left, right));
+        Assert.True(ExprValue.In(2L, left));
+        Assert.Equal(3, ExprValue.StorageLength(left));
+    }
+
     private static readonly object?[] NestedArray = [1, new[] { 2, 3 }];
     private static readonly List<object?> NestedList = [1L, new object[] { 2L, 3L }];
     private static readonly int[] TypedIntegers = [1];

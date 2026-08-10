@@ -276,6 +276,9 @@ public static class ExprCollections
             case IExprArray exprArray:
                 array = exprArray;
                 return true;
+            case ReadOnlyMemory<byte> bytes:
+                array = new ReadOnlyByteMemoryAdapter(bytes);
+                return true;
             case Array clrArray when clrArray.Rank is 1:
                 array = new ClrArrayAdapter(clrArray);
                 return true;
@@ -286,6 +289,25 @@ public static class ExprCollections
                 array = null;
                 return false;
         }
+    }
+
+    private sealed class ReadOnlyByteMemoryAdapter(ReadOnlyMemory<byte> values) : IExprArray
+    {
+        public Type ElementType => typeof(byte);
+
+        public int Count => values.Length;
+
+        public object this[int index] => values.Span[index];
+
+        public IEnumerator<object?> GetEnumerator()
+        {
+            for (var index = 0; index < values.Length; index++)
+            {
+                yield return values.Span[index];
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     /// <summary>Attempts to adapt a value to an Expr map.</summary>
