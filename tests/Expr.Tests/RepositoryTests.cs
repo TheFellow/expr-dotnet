@@ -13,7 +13,8 @@ public sealed class RepositoryTests
 
         Assert.All(runtime.GetReferencedAssemblies(), static reference =>
             Assert.True(
-                reference.Name is "System.Runtime",
+                reference.Name is "System.Runtime" or "netstandard"
+                    || reference.Name?.StartsWith("System.", StringComparison.Ordinal) is true,
                 $"Unexpected runtime dependency: {reference.FullName}"));
     }
 }

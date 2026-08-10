@@ -1,5 +1,8 @@
 # Port Roadmap
 
+The measurable definition of completion lives in the
+[`feature parity contract`](parity.md).
+
 ## Foundation
 
 - Public source locations, tokens, AST nodes, visitors, walkers, and patching
@@ -18,9 +21,9 @@
 - Parser fuzzing, generated-expression properties, and resource budgets
 - BenchmarkDotNet parse, compile, and evaluation suites
 - Security threat model, adversarial corpus, and Native AOT smoke application
+  (see the [security model](security-model.md))
 
 ## Stewardship
 
 - Attractor semport pipeline and append-only upstream commit ledger
 - API documentation, examples, package validation, and release automation
-

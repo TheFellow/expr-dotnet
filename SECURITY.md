@@ -9,3 +9,5 @@ behavior, expected behavior, and the Expr.NET version or commit.
 
 Until a stable release is published, no version is considered security-supported.
 
+The implementation's trust boundaries, required controls, and release gate are
+documented in the [security model](docs/security-model.md).

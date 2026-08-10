@@ -24,7 +24,10 @@ compilation, and an allocation-conscious virtual machine.
 The repository and quality gates are established. Language implementation and
 the upstream conformance corpus are being ported in vertical slices.
 
+The [feature parity contract](docs/parity.md) defines the compatibility target;
+the [architecture](docs/architecture.md), [compatibility policy](docs/compatibility.md),
+and [roadmap](docs/roadmap.md) describe how the port reaches it.
+
 ## License
 
 MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
