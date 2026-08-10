@@ -31,6 +31,10 @@ internal static class ExprBuiltinSerialization
         try
         {
             json = JsonSerializer.Serialize(normalized, serializerOptions);
+            if (OperatingSystem.IsWindows())
+            {
+                json = json.Replace("\r\n", "\n", StringComparison.Ordinal);
+            }
         }
         catch (JsonException exception)
         {
