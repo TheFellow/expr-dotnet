@@ -1,0 +1,43 @@
+name: Semport integrity
+
+on:
+  pull_request:
+    paths:
+      - "semport/**"
+      - ".github/scripts/semport_*"
+      - ".github/scripts/test_semport.sh"
+      - ".github/workflows/semport-integrity.yml"
+  push:
+    paths:
+      - "semport/**"
+      - ".github/scripts/semport_*"
+      - ".github/scripts/test_semport.sh"
+      - ".github/workflows/semport-integrity.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select comparison base
+        id: base
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "revision=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+            echo "revision=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test and guard ledger
+        shell: bash
+        run: |
+          args=()
+          if [[ -n "${{ steps.base.outputs.revision }}" ]]; then
+            args+=(--base "${{ steps.base.outputs.revision }}")
+          fi
+          .github/scripts/test_semport.sh "${args[@]}"

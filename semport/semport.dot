@@ -1,0 +1,279 @@
+digraph expr_dotnet_semport {
+  graph [
+    label="Expr.NET — upstream semantic-port stewardship",
+    rankdir="LR",
+    default_max_retry="2",
+    default_fidelity="compact",
+    goal="Keep Expr.NET at semantic feature parity with expr-lang/expr, processing exactly one upstream commit at a time in topology-safe oldest-first order. Preserve Expr semantics while producing idiomatic, dependency-minimal C# 14 on .NET 10. Every port must retain a public walkable and patchable AST, pass strict formatting/build/test/pack gates, receive independent semantic review, and end in one local commit. Every deliberate skip or failed port must append an immutable ledger event with a reviewable breadcrumb.",
+    model_stylesheet="* { llm_model: gpt-5.6-terra; llm_provider: openai; } .planner { llm_model: claude-opus-4-8; llm_provider: anthropic; } .implementer { llm_model: gpt-5.6-sol; llm_provider: openai; } .reviewer { llm_model: claude-opus-4-8; llm_provider: anthropic; }"
+  ];
+
+  node [
+    system_prompt="Work in Expr.NET, a semantic port of github.com/expr-lang/expr. Read AGENTS.md completely before acting. Read the exact upstream source and tests for the selected full SHA. Preserve observable Expr language, checker, optimizer, compiler, VM, builtin, AST, diagnostic, and configuration semantics; translate Go idioms into idiomatic C# rather than transliterating. Target .NET 10 and C# 14. Keep src/Expr free of third-party runtime dependencies. Explicit usings, nullable correctness, immutable public contracts, file-scoped namespaces, documented public APIs, warnings as errors, culture-explicit conversions, bounded recursion and regex behavior, and Native AOT compatibility are mandatory. The public AST must remain walkable and patchable. Use rg and apply_patch. Do not edit semport/ledger.tsv or semport/skipped and semport/wedged evidence except in the stage that explicitly owns those files."
+  ];
+
+  Start [shape="Mdiamond", label="Start"];
+  Exit [shape="Msquare", label="Stop"];
+
+  Preflight [
+    shape="parallelogram",
+    label="0) Require clean worktree",
+    timeout="10s",
+    tool_command="test -z \"$(git status --porcelain --untracked-files=all)\""
+  ];
+
+  Fetch [
+    shape="tab",
+    label="1) Discover and select one commit",
+    class="planner",
+    cwd=".",
+    fresh_session="true",
+    max_turns="40",
+    max_tool_rounds="40",
+    reasoning_effort="low",
+    prompt="Create .ai if needed. Run `python3 semport/ledger.py next`. If it prints an event, write that exact row to .ai/semport_next.tsv and write `git -C inspiration/expr show --no-patch --format='%%H%%n%%cI%%n%%an%%n%%s' <full-sha>` to .ai/semport_upstream.md, then stop. If it prints CAUGHT_UP, ensure inspiration/expr exists (clone https://github.com/expr-lang/expr.git there if absent), run `git -C inspiration/expr fetch origin master`, then `python3 semport/ledger.py discover --upstream inspiration/expr --revision origin/master`. If ledger.tsv changed, validate it, commit only ledger.tsv with message `semport: discover upstream Expr commits`, and do not push. Run `next` again. Write either its exact event row or the literal CAUGHT_UP to .ai/semport_next.tsv. For an event, also write the upstream metadata described above. Process no commit in this stage."
+  ];
+
+  CaughtUp [
+    shape="parallelogram",
+    label="Caught up?",
+    timeout="10s",
+    tool_command="grep -Fxq 'CAUGHT_UP' .ai/semport_next.tsv"
+  ];
+
+  Analyze [
+    shape="tab",
+    label="2) Analyze semantic delta",
+    class="planner",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="100",
+    max_tool_rounds="100",
+    reasoning_effort="high",
+    prompt="Read the full SHA from .ai/semport_next.tsv and metadata from .ai/semport_upstream.md. Inspect `git -C inspiration/expr show --find-renames <sha>` plus every directly relevant upstream implementation and test. Inspect corresponding Expr.NET code and compatibility docs. Write .ai/semport_decision.md with FIRST LINE exactly `PORT` or `SKIP`. After a blank line, give the semantic delta, affected public and internal contracts, upstream source/test references, C# target references, compatibility/security/performance implications, and proposed tests. Choose SKIP only when there is provably no observable or corpus-relevant .NET effect. For SKIP, also create semport/skipped/<full-sha>.md using semport/skipped/README.md; do not transition the ledger or commit. For PORT, do not change tracked files."
+  ];
+
+  IsPort [
+    shape="parallelogram",
+    label="Port or skip?",
+    timeout="10s",
+    tool_command="head -n 1 .ai/semport_decision.md | grep -Fxq 'PORT'"
+  ];
+
+  ReviewSkip [
+    shape="tab",
+    label="3s) Independently review skip",
+    class="reviewer",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="70",
+    max_tool_rounds="70",
+    reasoning_effort="high",
+    prompt="Independently audit the proposed SKIP against the entire upstream diff and directly relevant tests. Read the breadcrumb and corresponding C# behavior. If no port is required, correct any evidence defects and write .ai/semport_skip_review.md with FIRST LINE exactly `APPROVED`, followed by your rationale. If any semantic, AST, diagnostic, corpus, security, or performance effect requires a port, remove the proposed skip breadcrumb, write FIRST LINE exactly `PORT`, and then write a directly executable finalized port plan with concrete upstream and C# file references, acceptance criteria, tests, and Go-to-C# semantic mappings. Also copy that finalized plan to .ai/semport_plan_finalized.md. Do not touch the ledger or commit."
+  ];
+
+  SkipApproved [
+    shape="parallelogram",
+    label="Skip approved?",
+    timeout="10s",
+    tool_command="head -n 1 .ai/semport_skip_review.md | grep -Fxq 'APPROVED'"
+  ];
+
+  CommitSkip [
+    shape="tab",
+    label="4s) Append skip event and commit",
+    cwd=".",
+    fresh_session="true",
+    max_turns="30",
+    reasoning_effort="low",
+    prompt="Read the full SHA from .ai/semport_next.tsv. Confirm .ai/semport_skip_review.md starts with APPROVED and the canonical semport/skipped/<full-sha>.md exists. Run `python3 semport/ledger.py transition <full-sha> acknowledged`, then `python3 semport/ledger.py verify --repository .` and `.github/scripts/semport_guard.py`. Stage only semport/ledger.tsv and that breadcrumb. Confirm the staged diff contains one appended terminal event and one evidence file, then commit locally as `semport: acknowledge <12-char-sha> - <upstream subject summary>`. Never push. Remove the semport scratch files under .ai and stop."
+  ];
+
+  FinalizePlan [
+    shape="tab",
+    label="3p) Finalize C# port plan",
+    class="planner",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="80",
+    max_tool_rounds="80",
+    reasoning_effort="high",
+    prompt="Turn .ai/semport_decision.md into .ai/semport_plan_finalized.md. Re-read the relevant upstream source and tests and locate exact C# targets. Specify concrete edits, public AST walking/patching effects, exact semantic acceptance criteria, diagnostics, adversarial cases, corpus fixtures, and benchmark work when the upstream change affects a hot path. State Go-to-C# idiom mappings and the full repository validation contract. Keep scope to this one upstream SHA and do not change tracked files."
+  ];
+
+  Implement [
+    shape="tab",
+    label="4p) Implement idiomatic C# port",
+    class="implementer",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="200",
+    max_tool_rounds="200",
+    reasoning_effort="high",
+    scope_gate=".github/scripts/semport_scope.sh",
+    scope_revert="true",
+    scope_gate_max_retries="2",
+    prompt="Implement only .ai/semport_plan_finalized.md. Read AGENTS.md and cited upstream implementation/tests first. Use apply_patch. Preserve Expr semantics and C# ergonomics, the dependency-free runtime, public immutable walkable/patchable AST, XML docs, strict analyzer rules, and Native AOT constraints. Add focused semantic and adversarial tests; add or update benchmarks only for performance-relevant behavior. Do not edit ledger or breadcrumb files and do not commit. Write .ai/semport_implementation.md with FIRST LINE exactly `DONE`, then list changed files, test coverage, and any justified platform mapping."
+  ];
+
+  ScopeCheck [
+    shape="parallelogram",
+    label="Implementation scope gate",
+    timeout="20s",
+    tool_command=".github/scripts/semport_scope.sh"
+  ];
+
+  Validate [
+    shape="parallelogram",
+    label="5) Format, build, test, pack",
+    timeout="20m",
+    tool_command=".github/scripts/semport_validate.sh"
+  ];
+
+  FixValidation [
+    shape="tab",
+    label="5b) One focused validation repair",
+    class="implementer",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="120",
+    max_tool_rounds="120",
+    reasoning_effort="high",
+    scope_gate=".github/scripts/semport_scope.sh",
+    scope_revert="true",
+    scope_gate_max_retries="1",
+    prompt="Read .ai/semport_validation.md and the finalized plan. Diagnose and fix every reported formatting, analyzer, build, test, or packaging failure without broadening the selected upstream commit. Add regression coverage where the failure exposed a gap. Do not run the full validation contract here, do not touch stewardship files, and do not commit; the next tool stage measures the result."
+  ];
+
+  Revalidate [
+    shape="parallelogram",
+    label="5c) Re-run quality gates",
+    timeout="20m",
+    tool_command=".github/scripts/semport_validate.sh"
+  ];
+
+  Review [
+    shape="tab",
+    label="6) Independent semantic review",
+    class="reviewer",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="100",
+    max_tool_rounds="100",
+    reasoning_effort="high",
+    prompt="Review the uncommitted port independently against the selected upstream SHA, its implementation, and tests. Read the finalized plan, validation report, `git diff`, and all changed files. Check semantic parity (including errors and edge cases), public AST walk/patch ergonomics, thread safety, culture, overflow, reflection/AOT, bounded execution and regex safety, dependency purity, diagnostics, tests, and benchmarks when relevant. Write .ai/semport_review.md with FIRST LINE exactly `APPROVED` or `REVISE`. APPROVED requires concrete evidence and no material concern. REVISE must give actionable file/line findings ordered by severity. Do not modify tracked files, ledger, or breadcrumbs."
+  ];
+
+  ReviewApproved [
+    shape="parallelogram",
+    label="Review approved?",
+    timeout="10s",
+    tool_command="head -n 1 .ai/semport_review.md | grep -Fxq 'APPROVED'"
+  ];
+
+  FixReview [
+    shape="tab",
+    label="6b) Address review findings",
+    class="implementer",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="140",
+    max_tool_rounds="140",
+    reasoning_effort="high",
+    scope_gate=".github/scripts/semport_scope.sh",
+    scope_revert="true",
+    scope_gate_max_retries="1",
+    prompt="Read .ai/semport_review.md and resolve every material finding while preserving the one-SHA scope. Add missing regression/adversarial tests. Do not touch stewardship files, run the complete validation contract, or commit; subsequent stages measure and independently re-review the result."
+  ];
+
+  ValidateReviewFix [
+    shape="parallelogram",
+    label="6c) Validate review fixes",
+    timeout="20m",
+    tool_command=".github/scripts/semport_validate.sh"
+  ];
+
+  FinalReview [
+    shape="tab",
+    label="6d) Final independent review",
+    class="reviewer",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="80",
+    max_tool_rounds="80",
+    reasoning_effort="high",
+    prompt="Re-review the corrected diff against the selected upstream SHA and prior findings. Confirm the green validation report and that each material finding is resolved without semantic regression or scope creep. Write .ai/semport_final_review.md with FIRST LINE exactly `APPROVED` or `WEDGE`, followed by evidence. Do not change tracked files."
+  ];
+
+  FinalApproved [
+    shape="parallelogram",
+    label="Final review approved?",
+    timeout="10s",
+    tool_command="head -n 1 .ai/semport_final_review.md | grep -Fxq 'APPROVED'"
+  ];
+
+  CommitPort [
+    shape="tab",
+    label="7) Append implemented event and commit",
+    cwd=".",
+    fresh_session="true",
+    max_turns="40",
+    reasoning_effort="low",
+    requires_green_build=".github/scripts/semport_validate.sh",
+    prompt="Read the selected full SHA, approved review, and upstream subject. Ensure the worktree contains only the reviewed implementation scope. Run `python3 semport/ledger.py transition <full-sha> implemented`, `python3 semport/ledger.py verify --repository .`, and `.github/scripts/semport_guard.py`. Stage the complete reviewed port plus semport/ledger.tsv, but never .ai or inspiration. Inspect the staged diff and confirm it contains exactly this upstream semantic port and one appended terminal event. Commit locally as `semport: implement <12-char-sha> - <brief subject>`, with a body summarizing semantics and tests. Never push. Remove semport scratch files under .ai and stop."
+  ];
+
+  Wedge [
+    shape="tab",
+    label="Wedge with recoverable evidence",
+    cwd=".",
+    fidelity="full",
+    fresh_session="true",
+    max_turns="50",
+    max_tool_rounds="50",
+    reasoning_effort="high",
+    prompt="The one permitted repair cycle could not satisfy validation or review. Read the selected full SHA, plan, validation, and reviews. Preserve ALL failed implementation changes with `git stash push --include-untracked -m \"semport wedge <full-sha>\"`; verify the worktree is clean and record the exact stash reference. Create semport/wedged/<full-sha>.md using semport/wedged/README.md, including upstream metadata, attempted semantics, exact failures, affected files/tests, stash reference, and recovery plan. Run `python3 semport/ledger.py transition <full-sha> wedged`, verify the ledger and guard, stage only the breadcrumb and ledger, inspect the staged diff, and commit locally as `semport: wedge <12-char-sha> - port needs intervention`. Never push or drop the stash. Remove semport scratch files under .ai and stop."
+  ];
+
+  Start -> Preflight;
+  Preflight -> Fetch [condition="outcome=success"];
+  Preflight -> Exit [condition="outcome=fail", label="dirty — stop"];
+  Fetch -> CaughtUp;
+  CaughtUp -> Exit [condition="outcome=success", label="caught up"];
+  CaughtUp -> Analyze [condition="outcome=fail", label="one pending commit"];
+  Analyze -> IsPort;
+  IsPort -> FinalizePlan [condition="outcome=success", label="port"];
+  IsPort -> ReviewSkip [condition="outcome=fail", label="proposed skip"];
+  ReviewSkip -> SkipApproved;
+  SkipApproved -> CommitSkip [condition="outcome=success", label="approved skip"];
+  SkipApproved -> Implement [condition="outcome=fail", label="reclassified port"];
+  CommitSkip -> Fetch [loop_restart="true"];
+  FinalizePlan -> Implement;
+  Implement -> ScopeCheck;
+  ScopeCheck -> Validate [condition="outcome=success"];
+  ScopeCheck -> Wedge [condition="outcome=fail"];
+  Validate -> Review [condition="outcome=success"];
+  Validate -> FixValidation [condition="outcome=fail"];
+  FixValidation -> Revalidate;
+  Revalidate -> Review [condition="outcome=success"];
+  Revalidate -> Wedge [condition="outcome=fail"];
+  Review -> ReviewApproved;
+  ReviewApproved -> CommitPort [condition="outcome=success", label="approved"];
+  ReviewApproved -> FixReview [condition="outcome=fail", label="revise"];
+  FixReview -> ValidateReviewFix;
+  ValidateReviewFix -> FinalReview [condition="outcome=success"];
+  ValidateReviewFix -> Wedge [condition="outcome=fail"];
+  FinalReview -> FinalApproved;
+  FinalApproved -> CommitPort [condition="outcome=success", label="approved"];
+  FinalApproved -> Wedge [condition="outcome=fail", label="still blocked"];
+  CommitPort -> Fetch [loop_restart="true"];
+  Wedge -> Fetch [loop_restart="true"];
+}
