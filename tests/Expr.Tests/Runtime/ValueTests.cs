@@ -21,6 +21,14 @@ public sealed class ValueTests
         Assert.Equal(3, ExprValue.StorageLength(left));
     }
 
+    [Fact]
+    public void Equal_does_not_make_a_shared_boxed_nan_equal_to_itself()
+    {
+        object nan = double.NaN;
+
+        Assert.False(ExprValue.Equal(nan, nan));
+    }
+
     private static readonly object?[] NestedArray = [1, new[] { 2, 3 }];
     private static readonly List<object?> NestedList = [1L, new object[] { 2L, 3L }];
     private static readonly int[] TypedIntegers = [1];

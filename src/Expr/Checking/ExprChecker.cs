@@ -681,7 +681,7 @@ public sealed class ExprChecker
         ExprTypeDescriptor argument = Visit(node.Arguments[0]);
         return ExprTypeRelations.IsNumber(argument) || ExprTypeRelations.IsUnknown(argument)
             ? argument
-            : Error(node.Arguments[0], $"invalid argument for {node.Name} (type {argument})");
+            : Error(node, $"invalid argument for {node.Name} (type {argument})");
     }
 
     private ExprTypeDescriptor CheckUnaryBuiltin(BuiltinNode node, ExprTypeDescriptor result)
@@ -1234,10 +1234,7 @@ public sealed class ExprChecker
                 return;
             }
 
-            throw new ExprCheckException(ExprCheckDiagnostic.Create(
-                $"expected {expected}, but got {result}",
-                annotations.Keys.Last(),
-                source));
+            throw new ExprCheckException($"expected {expected}, but got {result}");
         }
 
         bool accepted = expected.Kind switch
@@ -1247,11 +1244,7 @@ public sealed class ExprChecker
         };
         if (!accepted)
         {
-            SyntaxNode root = annotations.Keys.Last();
-            throw new ExprCheckException(ExprCheckDiagnostic.Create(
-                $"expected {expected}, but got {result}",
-                root,
-                source));
+            throw new ExprCheckException($"expected {expected}, but got {result}");
         }
     }
 

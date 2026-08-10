@@ -67,7 +67,7 @@ internal sealed class ClrTypeModel
             members.TryAdd(name, new ClrValueMember(field, ExprTypes.FromClrType(field.FieldType)));
         }
 
-        IReadOnlyDictionary<string, IReadOnlyList<MethodInfo>> methods = type
+        var methods = type
             .GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .Where(static method =>
                 !method.IsSpecialName &&
@@ -81,6 +81,13 @@ internal sealed class ClrTypeModel
                 static group => group.Key,
                 static group => (IReadOnlyList<MethodInfo>)Array.AsReadOnly(group.ToArray()),
                 StringComparer.Ordinal);
+        if (type == typeof(TimeZoneInfo))
+        {
+            MethodInfo stringMethod = type.GetProperty(nameof(TimeZoneInfo.Id))?.GetMethod ??
+                throw new InvalidOperationException("TimeZoneInfo.Id is unavailable.");
+            methods["String"] = Array.AsReadOnly([stringMethod]);
+        }
+
         Type? typedProvider = type.GetInterfaces().Append(type).FirstOrDefault(static candidate =>
             candidate.IsGenericType &&
             candidate.GetGenericTypeDefinition() == typeof(Patching.IExprValueProvider<>));

@@ -264,14 +264,9 @@ public static class ExprValue
     {
         object? left = item.Left;
         object? right = item.Right;
-        if (ReferenceEquals(left, right))
-        {
-            return true;
-        }
-
         if (left is null || right is null)
         {
-            return false;
+            return left is null && right is null;
         }
 
         ExprValueKind leftKind = Classify(left);
@@ -301,6 +296,11 @@ public static class ExprValue
         if (left is TimeSpan leftDuration && right is TimeSpan rightDuration)
         {
             return leftDuration == rightDuration;
+        }
+
+        if (ReferenceEquals(left, right))
+        {
+            return true;
         }
 
         if (item.Depth >= MaximumEqualityDepth)
