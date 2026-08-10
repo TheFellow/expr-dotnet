@@ -43,6 +43,7 @@ go test ./...                         # from tools/Expr.Oracle
 python3 conformance/scripts/validate.py
 python3 conformance/scripts/refresh_expected.py > /tmp/upstream.jsonl
 python3 conformance/scripts/refresh_expected.py --write
+dotnet test tests/Expr.Tests/Expr.Tests.csproj --configuration Release --filter FullyQualifiedName~Expr.Tests.Conformance
 ```
 
 `validate.py` checks schema invariants, unique IDs, provenance paths and line
@@ -52,6 +53,11 @@ call. It then executes every case with the pinned oracle and diffs normalized
 outcomes. `refresh_expected.py` emits regenerated JSONL to standard output by
 default; `--write` performs an atomic corpus replacement. Review all oracle
 changes before committing them.
+
+The .NET conformance tests execute every checked-in request through the public
+`ExprEngine` pipeline, compare the normalized outcome to the pinned Go result,
+and independently prove that optimized and unoptimized execution agree wherever
+the case does not explicitly select an optimization mode.
 
 ## Initial inventory and expansion
 
