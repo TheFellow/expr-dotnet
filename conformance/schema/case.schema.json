@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TheFellow/expr-dotnet/conformance/schema/case.schema.json",
+  "title": "Expr differential conformance case v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "expression", "provenance", "expected"],
+  "properties": {
+    "schema": { "const": "expr.conformance.case/v1" },
+    "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9./_-]*$" },
+    "expression": { "type": "string" },
+    "operation": { "enum": ["compile", "evaluate"] },
+    "environment": {},
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowUndefinedVariables": { "type": "boolean" },
+        "optimize": { "type": "boolean" },
+        "disableShortCircuit": { "type": "boolean" },
+        "disableIfOperator": { "type": "boolean" },
+        "disableAllBuiltins": { "type": "boolean" },
+        "disableBuiltins": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "enableBuiltins": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "timezone": { "type": "string", "minLength": 1 },
+        "maxNodes": { "type": "integer", "minimum": 0 },
+        "expectedType": { "enum": ["any", "bool", "int", "int64", "float64"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision", "path", "test", "line"],
+      "properties": {
+        "repository": { "const": "https://github.com/expr-lang/expr" },
+        "revision": { "const": "4b31df3a2e0eefec04c017a82a00e0f08541d3e4" },
+        "path": { "type": "string", "minLength": 1 },
+        "test": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "expected": { "$ref": "result.schema.json#/$defs/outcome" }
+  }
+}

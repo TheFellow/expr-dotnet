@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TheFellow/expr-dotnet/conformance/schema/result.schema.json",
+  "title": "Expr differential conformance result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "upstreamRevision", "status", "phase"],
+  "properties": {
+    "schema": { "const": "expr.conformance.result/v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "upstreamRevision": { "const": "4b31df3a2e0eefec04c017a82a00e0f08541d3e4" },
+    "status": { "enum": ["success", "error"] },
+    "phase": { "enum": ["request", "oracle", "compile", "runtime", "normalize"] },
+    "type": { "enum": ["any", "null", "boolean", "integer", "float", "string", "bytes", "array", "map", "time", "duration"] },
+    "value": { "$ref": "#/$defs/value" },
+    "diagnostic": { "$ref": "#/$defs/diagnostic" }
+  },
+  "$defs": {
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "phase"],
+      "properties": {
+        "status": { "enum": ["success", "error"] },
+        "phase": { "enum": ["request", "oracle", "compile", "runtime", "normalize"] },
+        "type": { "enum": ["any", "null", "boolean", "integer", "float", "string", "bytes", "array", "map", "time", "duration"] },
+        "value": { "$ref": "#/$defs/value" },
+        "diagnostic": { "$ref": "#/$defs/diagnostic" }
+      }
+    },
+    "value": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "null" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "boolean" }, "value": { "type": "boolean" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "integer" }, "value": { "type": "string", "pattern": "^-?[0-9]+$" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "float" }, "value": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "enum": ["string", "bytes", "time"] }, "value": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "duration" }, "value": { "type": "string", "pattern": "^-?[0-9]+$" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "array" }, "value": { "type": "array", "items": { "$ref": "#/$defs/value" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "map" }, "value": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["key", "value"], "properties": { "key": { "$ref": "#/$defs/value" }, "value": { "$ref": "#/$defs/value" } } } } } }
+      ]
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message"],
+      "properties": {
+        "message": { "type": "string" },
+        "from": { "type": "integer", "minimum": 0 },
+        "to": { "type": "integer", "minimum": 0 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
