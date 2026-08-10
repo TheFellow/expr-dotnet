@@ -8,6 +8,8 @@ BenchmarkDotNet.Artifacts/
 *.user
 *.suo
 TestResults/
+__pycache__/
+*.pyc
 .ai/
 .fkyeah-cache/
 attractor-logs/

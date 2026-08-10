@@ -42,7 +42,8 @@ jobs:
           go mod verify
       - name: Validate corpus and pinned outcomes
         run: |
-          python3 conformance/scripts/test_validate.py
+          python3 -m unittest discover -s conformance/scripts -p 'test_*.py'
+          python3 conformance/scripts/validate_traceability.py --require-no-gaps
           python3 conformance/scripts/validate.py
       - name: Prove deterministic regeneration
         shell: bash

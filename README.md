@@ -1,32 +1,95 @@
-# Expr.NET
+# Expr for .NET
 
-Expr.NET is a faithful, safe, and fast semantic port of
-[`expr-lang/expr`](https://github.com/expr-lang/expr) for modern .NET.
+Expr is an idiomatic C# semantic port of
+[`expr-lang/expr`](https://github.com/expr-lang/expr): a safe, statically checked
+expression language designed to compile once and evaluate many times.
 
-The project is under active construction. Its goal is full language and API
-feature parity expressed through idiomatic C#, including a public walkable AST,
-static type checking against .NET environments, optimization, bytecode
-compilation, and an allocation-conscious virtual machine.
+The library targets .NET 10 and C# 14, has no third-party runtime dependencies,
+and exposes the full pipeline: parsing, public immutable syntax trees, static
+checking, semantic patching, optimization, bytecode compilation, and bounded
+virtual-machine evaluation.
 
-## Principles
+```csharp
+using System.Collections.Generic;
+using Expr;
+using Expr.Configuration;
+using Expr.Runtime;
+using Expr.Types;
 
-- Semantic compatibility is measured against a pinned upstream Expr revision.
-- The runtime package has no third-party dependencies.
-- The interpreter is side-effect-free, terminating, and Native AOT compatible.
-- Public APIs are documented, nullable-correct, thread-safe where promised, and
-  designed for normal C# usage rather than transliterated Go.
-- Every upstream semantic change is reviewed through the semport ledger.
-- Performance claims require reproducible BenchmarkDotNet evidence.
-- Security-sensitive behavior requires adversarial tests and explicit limits.
+var schema = new ExprEnvironmentSchemaBuilder<OrderContext>()
+    .Member("customer", static value => value.Customer, ExprTypes.String)
+    .ArrayMember("prices", static value => value.Prices, ExprTypes.Float)
+    .Build();
 
-## Status
+ExprConfiguration configuration = ExprConfiguration.Default.WithEnvironment(schema);
+CompiledExpression expression = ExprEngine.Compile(
+    "customer == 'Ada' && sum(prices) >= 100.0",
+    configuration);
 
-The repository and quality gates are established. Language implementation and
-the upstream conformance corpus are being ported in vertical slices.
+object? result = expression.Run(new OrderContext("Ada", [45.0, 60.0]));
+// result is true
 
-The [feature parity contract](docs/parity.md) defines the compatibility target;
-the [architecture](docs/architecture.md), [compatibility policy](docs/compatibility.md),
-and [roadmap](docs/roadmap.md) describe how the port reaches it.
+public sealed record OrderContext(string Customer, IReadOnlyList<double> Prices);
+```
+
+Build schemas explicitly for Native AOT and trimming. Reflection-based schema
+discovery is available for conventional applications and clearly annotated at
+the API boundary.
+
+## Inspect and adapt the AST
+
+The parsed and optimized trees remain first-class library artifacts. Consumers
+can walk, print, or immutably replace nodes before compilation:
+
+```csharp
+using System.Collections.Generic;
+using Expr;
+using Expr.Syntax;
+
+SyntaxTree tree = ExprEngine.Parse("price * quantity");
+var visited = new List<SyntaxNode>();
+SyntaxWalker.Walk(tree.Root, visited.Add);
+
+SyntaxNode replacement = new IntegerNode(42, tree.Root.Location);
+CompiledExpression expression = ExprEngine.Compile(
+    new SyntaxTree(replacement, tree.Source));
+```
+
+`CompiledExpression` exposes its final `SyntaxTree`, `SemanticModel`, and
+immutable bytecode `Program` for advanced integrations.
+
+## Compatibility and confidence
+
+- Semantics are checked against a pinned upstream Go revision by a differential
+  oracle, with optimization enabled and disabled.
+- All 71 upstream built-ins and all 84 VM opcodes have direct coverage.
+- Deterministic generated-expression properties and a standalone fuzz harness
+  protect parsing, printing, and optimizer equivalence.
+- The complete pinned generated suite (43,689 expressions) and CrowdSec suite
+  (673 expressions) compile and run as executable parity tests.
+- Evaluation has explicit instruction, memory, stack, call-depth, regex, and
+  cancellation controls.
+- Release builds enforce nullable analysis, all .NET analyzers, formatting,
+  XML documentation, package validation, and warnings as errors.
+- The Attractor semport pipeline and append-only ledger make upstream changes
+  reviewable and repeatable.
+
+The project is pre-1.0 while its public API matures; pinned upstream feature
+parity is enforced as a release gate. See the [feature parity contract](docs/parity.md),
+[compatibility policy](docs/compatibility.md), [architecture](docs/architecture.md),
+and [security model](docs/security-model.md).
+
+## Build
+
+```sh
+dotnet restore expr-dotnet.slnx
+dotnet format expr-dotnet.slnx --verify-no-changes --no-restore
+dotnet build expr-dotnet.slnx --configuration Release --no-restore
+dotnet test expr-dotnet.slnx --configuration Release --no-build --no-restore
+```
+
+Contribution and semport workflows are documented in [CONTRIBUTING.md](CONTRIBUTING.md)
+and [semport/README.md](semport/README.md).
 
 ## License
 
