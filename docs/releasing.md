@@ -21,14 +21,7 @@ key.
    Choose the NuGet user or organization that should own the package as the
    policy owner.
 
-2. Store the NuGet.org profile name—not the email address—as the `NUGET_USER`
-   secret in the repository's `release` environment:
-
-   ```sh
-   gh secret set NUGET_USER --repo TheFellow/expr-dotnet --env release
-   ```
-
-3. Configure any desired deployment protection rules on the GitHub `release`
+2. Configure any desired deployment protection rules on the GitHub `release`
    environment. Requiring an approval gives the final package publication a
    deliberate human gate.
 
