@@ -104,7 +104,8 @@ public sealed class SyntaxParser
         "lastIndexOf", "hasPrefix", "hasSuffix", "max", "min", "mean", "median", "toJSON",
         "fromJSON", "toBase64", "fromBase64", "now", "duration", "date", "timezone", "first",
         "last", "get", "take", "keys", "values", "toPairs", "fromPairs", "reverse", "uniq",
-        "concat", "flatten", "sort", "bitnot",
+        "concat", "flatten", "sort", "bitand", "bitor", "bitxor", "bitnand", "bitshl",
+        "bitshr", "bitushr", "bitnot",
     };
 
     private IReadOnlyList<SyntaxToken> tokens = [];

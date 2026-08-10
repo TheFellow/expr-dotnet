@@ -16,7 +16,7 @@ The pinned revision contains:
 - 585 named Go tests and approximately 15,500 lines of non-vendored tests
 - 59 benchmarks and one fuzz harness
 - 23 public AST node kinds
-- 64 standard built-ins
+- 71 standard built-ins
 - 84 virtual-machine opcodes, including the invalid and terminal sentinels
 
 These counts are an inventory aid, not a substitute for behavioral coverage.
@@ -66,7 +66,8 @@ Value built-ins:
 `hasSuffix`, `max`, `min`, `mean`, `median`, `toJSON`, `fromJSON`,
 `toBase64`, `fromBase64`, `now`, `duration`, `date`, `timezone`, `first`,
 `last`, `get`, `take`, `keys`, `values`, `toPairs`, `fromPairs`, `reverse`,
-`uniq`, `concat`, `flatten`, `sort`, and `bitnot`.
+`uniq`, `concat`, `flatten`, `sort`, `bitand`, `bitor`, `bitxor`, `bitnand`,
+`bitshl`, `bitshr`, `bitushr`, and `bitnot`.
 
 ## .NET host mapping
 

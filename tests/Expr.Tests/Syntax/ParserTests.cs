@@ -193,6 +193,21 @@ public sealed class ParserTests
         Assert.IsType<BuiltinNode>(parser.Parse("::len(items)", options).Root);
     }
 
+    [Theory]
+    [InlineData("bitand(7, 3)", "bitand")]
+    [InlineData("bitor(4, 1)", "bitor")]
+    [InlineData("bitxor(7, 3)", "bitxor")]
+    [InlineData("bitnand(7, 3)", "bitnand")]
+    [InlineData("bitshl(1, 3)", "bitshl")]
+    [InlineData("bitshr(8, 2)", "bitshr")]
+    [InlineData("bitushr(-8, 2)", "bitushr")]
+    public void Recognizes_generated_bit_functions_as_builtins(string expression, string expectedName)
+    {
+        var builtin = Assert.IsType<BuiltinNode>(parser.Parse(expression).Root);
+
+        Assert.Equal(expectedName, builtin.Name);
+    }
+
     [Fact]
     public void Supports_custom_if_function_mode()
     {
