@@ -11,5 +11,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Expr/Expr.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/Upstream/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures/Upstream/*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
-

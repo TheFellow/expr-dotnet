@@ -94,6 +94,27 @@ public sealed class ExprFunction
         ExprFunctionTypeValidator? typeValidator = null,
         bool isPredicate = false,
         ExprFunctionMemoryEstimator? memoryEstimator = null)
+        : this(
+            name,
+            overloads,
+            invoker,
+            safeInvoker,
+            typeValidator,
+            isPredicate,
+            memoryEstimator,
+            enforceRuntimeArity: true)
+    {
+    }
+
+    internal ExprFunction(
+        string name,
+        IEnumerable<ExprFunctionOverload> overloads,
+        ExprFunctionInvoker? invoker,
+        ExprSafeFunctionInvoker? safeInvoker,
+        ExprFunctionTypeValidator? typeValidator,
+        bool isPredicate,
+        ExprFunctionMemoryEstimator? memoryEstimator,
+        bool enforceRuntimeArity)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(overloads);
@@ -115,6 +136,7 @@ public sealed class ExprFunction
         TypeValidator = typeValidator;
         IsPredicate = isPredicate;
         MemoryEstimator = memoryEstimator;
+        EnforceRuntimeArity = enforceRuntimeArity;
     }
 
     /// <summary>Gets the expression-visible name.</summary>
@@ -138,6 +160,8 @@ public sealed class ExprFunction
     /// <summary>Gets the optional estimator used to reject over-budget calls before host allocation.</summary>
     public ExprFunctionMemoryEstimator? MemoryEstimator { get; }
 
+    internal bool EnforceRuntimeArity { get; }
+
     /// <summary>Estimates an allocation upper bound for the supplied arguments.</summary>
     /// <param name="arguments">The ordered runtime arguments.</param>
     /// <returns>The estimated allocation charge, or zero when no estimator is registered.</returns>
@@ -155,7 +179,7 @@ public sealed class ExprFunction
             acceptsArity = Overloads[index].AcceptsArity(arguments.Length);
         }
 
-        if (!acceptsArity)
+        if (EnforceRuntimeArity && !acceptsArity)
         {
             throw new ExprRuntimeException(
                 $"invalid number of arguments for {Name} (got {arguments.Length})");

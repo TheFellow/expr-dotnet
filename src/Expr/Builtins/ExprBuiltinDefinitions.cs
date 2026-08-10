@@ -100,14 +100,14 @@ internal static class ExprBuiltinDefinitions
                 O(ExprTypes.Time, false, ExprTypes.String, ExprTypes.String, ExprTypes.String),
                 O(ExprTypes.Time, false, TimeZone, ExprTypes.String),
                 O(ExprTypes.Time, false, TimeZone, ExprTypes.String, ExprTypes.String),
-            ]),
+            ], ValidateDate),
         Function("timezone", ExprBuiltinTime.Timezone, [O(TimeZone, false, ExprTypes.String)]),
         Function("first", ExprBuiltinCollections.First, [O(ExprTypes.Any, false, AnyArray)]),
         Function("last", ExprBuiltinCollections.Last, [O(ExprTypes.Any, false, AnyArray)]),
         Function("get", ExprBuiltinCollections.Get,
             [O(ExprTypes.Any, false, ExprTypes.Any, ExprTypes.Any)]),
         Safe("take", arguments => ExprBuiltinCollections.Take(arguments, library.Options),
-            [O(AnyArray, false, AnyArray, ExprTypes.Integer)]),
+            [O(AnyArray, false, AnyArray, ExprTypes.Integer)], validator: ValidateTake),
         Safe("keys", arguments => ExprBuiltinCollections.Keys(arguments, library.Options), [O(AnyArray, false, AnyMap)]),
         Safe("values", arguments => ExprBuiltinCollections.Values(arguments, library.Options), [O(AnyArray, false, AnyMap)]),
         Safe("toPairs", arguments => ExprBuiltinCollections.ToPairs(arguments, library.Options), [O(AnyArray, false, AnyMap)]),
@@ -144,17 +144,30 @@ internal static class ExprBuiltinDefinitions
         string name,
         ExprFunctionInvoker invoker,
         IReadOnlyList<ExprFunctionOverload> overloads,
-        ExprFunctionTypeValidator? validator = null) => new(name, overloads, invoker, typeValidator: validator);
+        ExprFunctionTypeValidator? validator = null) => new(
+            name,
+            overloads,
+            invoker,
+            safeInvoker: null,
+            typeValidator: validator,
+            isPredicate: false,
+            memoryEstimator: null,
+            enforceRuntimeArity: false);
 
     private static ExprFunction Safe(
         string name,
         ExprSafeFunctionInvoker invoker,
         IReadOnlyList<ExprFunctionOverload> overloads,
-        ExprFunctionMemoryEstimator? estimator = null) => new(
+        ExprFunctionMemoryEstimator? estimator = null,
+        ExprFunctionTypeValidator? validator = null) => new(
             name,
             overloads,
+            invoker: null,
             safeInvoker: invoker,
-            memoryEstimator: estimator);
+            typeValidator: validator,
+            isPredicate: false,
+            memoryEstimator: estimator,
+            enforceRuntimeArity: false);
 
     private static ExprFunctionOverload O(
         ExprTypeDescriptor result,
@@ -201,13 +214,37 @@ internal static class ExprBuiltinDefinitions
             throw new ExprRuntimeException("not enough arguments to call aggregate");
         }
 
+        foreach (ExprTypeDescriptor argument in arguments)
+        {
+            if (argument.Kind is ExprTypeKind.Any or ExprTypeKind.Array)
+            {
+                return ExprTypes.Any;
+            }
+        }
+
         return arguments[0];
     }
 
     private static ExprTypeDescriptor ValidateAggregateFloat(ReadOnlySpan<ExprTypeDescriptor> arguments)
     {
-        _ = ValidateAggregate(arguments);
-        return ExprTypes.Float;
+        return ValidateAggregate(arguments);
+    }
+
+    private static ExprTypeDescriptor ValidateTake(ReadOnlySpan<ExprTypeDescriptor> arguments)
+    {
+        RequireArity(arguments, 2);
+        return arguments[0].Kind is ExprTypeKind.Any ? ExprTypes.Any : AnyArray;
+    }
+
+    private static ExprTypeDescriptor ValidateDate(ReadOnlySpan<ExprTypeDescriptor> arguments)
+    {
+        if (arguments.Length < 1 || arguments.Length > 4)
+        {
+            throw new ExprRuntimeException(
+                $"invalid number of arguments (expected between 1 and 4, got {arguments.Length})");
+        }
+
+        return ExprTypes.Time;
     }
 
     private static void RequireArity(ReadOnlySpan<ExprTypeDescriptor> arguments, int count)

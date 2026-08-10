@@ -24,6 +24,8 @@ from common import (
     read_cases,
     run_oracle,
 )
+from traceability import DEFAULT_TRACEABILITY
+from validate_traceability import validate_traceability
 
 ALLOWED_CASE_KEYS = {
     "schema", "id", "expression", "operation", "environment", "options",
@@ -179,7 +181,9 @@ def validate_case(case: dict[str, Any], upstream: Path, seen: set[str]) -> None:
     require(line <= line_count, f"{identifier}: provenance line {line} exceeds {relative} ({line_count})")
     test = provenance.get("test")
     require(isinstance(test, str) and test, f"{identifier}: provenance test is required")
-    require(test in source.read_text(encoding="utf-8"), f"{identifier}: test {test!r} not found in {relative}")
+    source_text = source.read_text(encoding="utf-8")
+    declaration = re.compile(rf"^func\s+{re.escape(test)}\s*\(", re.MULTILINE)
+    require(declaration.search(source_text) is not None, f"{identifier}: top-level test {test!r} not found in {relative}")
 
 
 def validate_builtin_inventory(path: Path, upstream: Path, cases: list[dict[str, Any]]) -> int:
@@ -210,6 +214,7 @@ def main() -> int:
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--builtin-inventory", type=Path, default=DEFAULT_BUILTIN_INVENTORY)
     parser.add_argument("--upstream", type=Path, default=DEFAULT_UPSTREAM)
+    parser.add_argument("--traceability", type=Path, default=DEFAULT_TRACEABILITY)
     parser.add_argument("--skip-oracle", action="store_true")
     args = parser.parse_args()
 
@@ -220,6 +225,7 @@ def main() -> int:
         for case in cases:
             validate_case(case, args.upstream, seen)
         builtin_count = validate_builtin_inventory(args.builtin_inventory, args.upstream, cases)
+        traceability = validate_traceability(args.traceability, args.upstream, args.corpus)
 
         if not args.skip_oracle:
             results = run_oracle(cases)
@@ -240,7 +246,11 @@ def main() -> int:
                     )
             require(not differences, "oracle differences:\n" + "\n".join(differences))
         mode = "structure/provenance" if args.skip_oracle else "structure/provenance/oracle"
-        print(f"validated {len(cases)} cases and {builtin_count} built-ins ({mode}) at {REVISION}")
+        print(
+            f"validated {len(cases)} cases, {builtin_count} built-ins, and "
+            f"{traceability['symbols']} upstream test symbols with {traceability['gaps']} explicit gaps "
+            f"({mode}) at {REVISION}"
+        )
         return 0
     except (OSError, ValueError, RuntimeError) as error:
         print(error, file=sys.stderr)

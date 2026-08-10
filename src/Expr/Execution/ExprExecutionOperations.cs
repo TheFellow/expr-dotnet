@@ -39,7 +39,9 @@ internal static class ExprExecutionOperations
 
         if (ExprCollections.TryAsMap(environment, out IExprMap? map) && map is not null)
         {
-            return map.TryGetValue(name, out object? mapped) ? mapped : null;
+            return map.TryGetValue(name, out object? mapped)
+                ? mapped
+                : ExprCollections.GetMapDefaultValue(map);
         }
 
         throw Error($"cannot fetch {name} from {TypeName(environment)}");
@@ -115,7 +117,9 @@ internal static class ExprExecutionOperations
 
         if (ExprCollections.TryAsMap(target, out IExprMap? map) && map is not null)
         {
-            return map.TryGetValue(key, out object? value) ? value : null;
+            return map.TryGetValue(key, out object? value)
+                ? value
+                : ExprCollections.GetMapDefaultValue(map);
         }
 
         throw Error($"cannot fetch {Display(key)} from {TypeName(target)}");
@@ -401,9 +405,24 @@ internal static class ExprExecutionOperations
         return result;
     }
 
-    internal static bool IsValidMapKey(object? key) => key is null or string or bool or char or
-        sbyte or byte or short or ushort or int or uint or long or ulong or nint or nuint or
-        Half or float or double or decimal or DateTime or DateTimeOffset or TimeSpan or Guid or Enum;
+    internal static bool IsValidMapKey(object? key)
+    {
+        if (key is null or string or bool or char or
+            sbyte or byte or short or ushort or int or uint or long or ulong or nint or nuint or
+            Half or float or double or decimal or DateTime or DateTimeOffset or TimeSpan or Guid or Enum)
+        {
+            return true;
+        }
+
+        if (key is IComparable)
+        {
+            return true;
+        }
+
+        return key is not Delegate &&
+            !ExprCollections.TryAsArray(key, out _) &&
+            !ExprCollections.TryAsMap(key, out _);
+    }
 
     internal static bool TryGetBytes(object? value, out ReadOnlyMemory<byte> bytes)
     {

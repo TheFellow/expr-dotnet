@@ -14,6 +14,15 @@ internal static class ExprBuiltinCollections
             throw new ExprRuntimeException($"not enough arguments to call {(maximum ? "max" : "min")}");
         }
 
+        if (arguments.Length is 1 &&
+            !ExprBuiltinValues.IsNumeric(arguments[0]) &&
+            !ExprCollections.TryAsArray(arguments[0], out _))
+        {
+            // Upstream's dynamic aggregate path returns a lone non-array value unchanged.
+            // Static validation still rejects known incompatible types before invocation.
+            return arguments[0];
+        }
+
         object? selected = null;
         bool found = false;
         VisitNested(arguments, options, (value, _) =>
@@ -88,14 +97,48 @@ internal static class ExprBuiltinCollections
 
     public static object? First(ReadOnlySpan<object?> arguments)
     {
-        IExprArray array = RequireArray(arguments[0], "first");
-        return array.Count == 0 ? null : array[0];
+        object? value = arguments[0];
+        if (ExprCollections.TryAsArray(value, out IExprArray? array) && array is not null)
+        {
+            return array.Count == 0 ? null : array[0];
+        }
+
+        if (ExprCollections.TryAsMap(value, out IExprMap? map) && map is not null)
+        {
+            if (!ExprCollections.TryConvertIntegerKey(0L, map.KeyType, out object? key))
+            {
+                return null;
+            }
+
+            return map.TryGetValue(key, out object? first)
+                ? first
+                : ExprCollections.GetMapDefaultValue(map);
+        }
+
+        return null;
     }
 
     public static object? Last(ReadOnlySpan<object?> arguments)
     {
-        IExprArray array = RequireArray(arguments[0], "last");
-        return array.Count == 0 ? null : array[array.Count - 1];
+        object? value = arguments[0];
+        if (ExprCollections.TryAsArray(value, out IExprArray? array) && array is not null)
+        {
+            return array.Count == 0 ? null : array[array.Count - 1];
+        }
+
+        if (ExprCollections.TryAsMap(value, out IExprMap? map) && map is not null)
+        {
+            if (!ExprCollections.TryConvertIntegerKey(-1L, map.KeyType, out object? key))
+            {
+                return null;
+            }
+
+            return map.TryGetValue(key, out object? last)
+                ? last
+                : ExprCollections.GetMapDefaultValue(map);
+        }
+
+        return null;
     }
 
     public static object? Get(ReadOnlySpan<object?> arguments)
@@ -109,7 +152,7 @@ internal static class ExprBuiltinCollections
 
         if (ExprCollections.TryAsArray(from, out IExprArray? array) && array is not null)
         {
-            long requested = ExprBuiltinValues.RequireInteger(key, "get");
+            long requested = ExprValue.ToInt64(key);
             long index = requested < 0 ? array.Count + requested : requested;
             return index >= 0 && index < array.Count ? array[(int)index] : null;
         }
@@ -169,7 +212,9 @@ internal static class ExprBuiltinCollections
         IExprMap map = RequireMap(arguments[0], "transform to pairs");
         EnsureAllocation(map.Count, options);
         return Result(
-            new ExprArray(map.Select(static pair => (object?)new ExprArray([pair.Key, pair.Value]))),
+            new ExprTypedArray(
+                map.Select(static pair => (object?)new ExprArray([pair.Key, pair.Value])),
+                typeof(IExprArray)),
             map.Count);
     }
 
@@ -297,11 +342,19 @@ internal static class ExprBuiltinCollections
 
     public static ExprInvocationResult Sort(ReadOnlySpan<object?> arguments, ExprBuiltinOptions options)
     {
-        IExprArray array = RequireArray(arguments[0], "sort");
+        IExprArray array = ExprCollections.TryAsArray(arguments[0], out IExprArray? adapted) &&
+            adapted is not null && IsSupportedSortArray(adapted)
+            ? adapted
+            : ExprNilArray.Instance;
         EnsureAllocation(array.Count, options);
         bool descending = arguments.Length == 2 && ParseOrder(arguments[1]) == "desc";
+        if (array is IExprNilValue)
+        {
+            return Result(ExprNilArray.Instance, 0);
+        }
+
         object?[] values = array.ToArray();
-        Array.Sort(values, (left, right) => descending ? CompareForSort(right, left) : CompareForSort(left, right));
+        SortValues(values, descending);
         return Result(new ExprArray(values), values.Length);
     }
 
@@ -341,6 +394,11 @@ internal static class ExprBuiltinCollections
 
     internal static void EnsureMapKey(object? key)
     {
+        if (key is IComparable)
+        {
+            return;
+        }
+
         if (ExprCollections.TryAsArray(key, out _) || ExprCollections.TryAsMap(key, out _))
         {
             throw new ExprRuntimeException(
@@ -356,6 +414,49 @@ internal static class ExprBuiltinCollections
         }
 
         return ExprValue.Less(right, left) ? 1 : 0;
+    }
+
+    private static void SortValues(object?[] values, bool descending)
+    {
+        if (values.Length <= 12)
+        {
+            // Go's sort package uses insertion sort for slices up to twelve elements.
+            // Matching that comparison order matters for dynamic heterogeneous values:
+            // an invalid comparison must fail only when upstream performs it too.
+            for (var index = 1; index < values.Length; index++)
+            {
+                for (int current = index; current > 0; current--)
+                {
+                    int comparison = descending
+                        ? CompareForSort(values[current - 1], values[current])
+                        : CompareForSort(values[current], values[current - 1]);
+                    if (comparison >= 0)
+                    {
+                        break;
+                    }
+
+                    (values[current - 1], values[current]) = (values[current], values[current - 1]);
+                }
+            }
+
+            return;
+        }
+
+        Array.Sort(values, (left, right) => descending ? CompareForSort(right, left) : CompareForSort(left, right));
+    }
+
+    private static bool IsSupportedSortArray(IExprArray array)
+    {
+        Type elementType = array.ElementType;
+        if (elementType == typeof(object) || elementType == typeof(string))
+        {
+            return true;
+        }
+
+        return Type.GetTypeCode(elementType) is
+            TypeCode.SByte or TypeCode.Byte or TypeCode.Int16 or TypeCode.UInt16 or
+            TypeCode.Int32 or TypeCode.UInt32 or TypeCode.Int64 or TypeCode.UInt64 or
+            TypeCode.Single or TypeCode.Double;
     }
 
     private static IExprMap RequireMap(object? value, string operation)

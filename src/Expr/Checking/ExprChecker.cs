@@ -290,7 +290,7 @@ public sealed class ExprChecker
             "contains" or "startsWith" or "endsWith" when BothOrUnknown(left, right, ExprTypeKind.String) =>
                 ExprTypes.Boolean,
             ".." when BothOrUnknown(left, right, ExprTypeKind.Integer) => ExprTypes.ArrayOf(ExprTypes.Integer),
-            "??" => ExprTypeRelations.CommonType(left, right),
+            "??" => CoalescedType(left, right),
             _ => null,
         };
 
@@ -309,16 +309,40 @@ public sealed class ExprChecker
         return Error(node, $"invalid operation: {node.Operator} (mismatched types {left} and {right})");
     }
 
+    private static ExprTypeDescriptor CoalescedType(ExprTypeDescriptor left, ExprTypeDescriptor right)
+    {
+        if (left.Kind is ExprTypeKind.Nil && right.Kind is not ExprTypeKind.Nil)
+        {
+            return right;
+        }
+
+        if (right.Kind is ExprTypeKind.Nil && left.Kind is not ExprTypeKind.Nil)
+        {
+            return left;
+        }
+
+        if (ExprTypeRelations.IsUnknown(left) || ExprTypeRelations.IsUnknown(right))
+        {
+            return ExprTypes.Any;
+        }
+
+        return StrictlyAssignable(right, left) ? left : ExprTypes.Any;
+    }
+
     private ExprTypeDescriptor VisitMember(MemberNode node)
     {
         if (node.Target is IdentifierNode { Name: "$env" })
         {
             _ = Visit(node.Target);
-            _ = Visit(node.Property);
             if (node.Property is not StringNode environmentName)
             {
+                // Upstream deliberately leaves computed $env indexes dynamic. Resolving the
+                // key as a top-level identifier here would reject optional accesses such as
+                // $env?.[missing] before the runtime can apply map-default semantics.
                 return ExprTypes.Any;
             }
+
+            _ = Visit(node.Property);
 
             if (configuration.Environment?.TryGetMember(environmentName.Value, out ExprEnvironmentMember? member) is true &&
                 member is not null)
@@ -422,6 +446,13 @@ public sealed class ExprChecker
     private ExprTypeDescriptor VisitSlice(SliceNode node)
     {
         ExprTypeDescriptor target = Visit(node.Target);
+        if (ExprTypeRelations.IsUnknown(target))
+        {
+            // Bounds are intentionally unchecked when the host value is dynamic; this
+            // mirrors upstream and avoids resolving expressions that may never execute.
+            return ExprTypes.Any;
+        }
+
         if (node.From is not null)
         {
             ExprTypeDescriptor from = Visit(node.From);
@@ -440,11 +471,6 @@ public sealed class ExprChecker
             }
         }
 
-        if (ExprTypeRelations.IsUnknown(target))
-        {
-            return ExprTypes.Any;
-        }
-
         return target.Kind is ExprTypeKind.String or ExprTypeKind.Array
             ? target
             : Error(node, $"cannot slice {target}");
@@ -454,17 +480,20 @@ public sealed class ExprChecker
     {
         if (node.Callee is IdentifierNode { Name: "$env" })
         {
-            foreach (SyntaxNode argument in node.Arguments)
-            {
-                _ = Visit(argument);
-            }
-
             return Error(node, $"{configuration.Environment?.EnvironmentType.FullName ?? "environment"} is not callable");
         }
 
         ExprTypeDescriptor callee = Visit(node.Callee);
-        ExprTypeDescriptor[] argumentTypes = node.Arguments.Select(Visit).ToArray();
         annotations.TryGetValue(node.Callee, out ExprNodeSemantics? calleeSemantics);
+
+        if (ExprTypeRelations.IsUnknown(callee) && calleeSemantics?.Function is null)
+        {
+            // Dynamic callables are validated by the runtime. Upstream does not walk
+            // their arguments during checking because no signature is available.
+            return ExprTypes.Any;
+        }
+
+        ExprTypeDescriptor[] argumentTypes = node.Arguments.Select(Visit).ToArray();
 
         if (calleeSemantics?.Function is ExprFunction function)
         {
@@ -474,11 +503,6 @@ public sealed class ExprChecker
         if (methodGroups.TryGetValue(node.Callee, out IReadOnlyList<MethodInfo>? methods))
         {
             return CheckMethodCall(node, methods, argumentTypes);
-        }
-
-        if (ExprTypeRelations.IsUnknown(callee))
-        {
-            return ExprTypes.Any;
         }
 
         if (callee is FunctionTypeDescriptor functionType)
@@ -538,7 +562,8 @@ public sealed class ExprChecker
             "get" => CheckGet(node),
             "len" => CheckLen(node),
             "type" => CheckUnaryBuiltin(node, ExprTypes.String),
-            "abs" or "ceil" or "floor" or "round" => CheckNumericBuiltin(node),
+            "abs" => CheckNumericBuiltin(node),
+            "ceil" or "floor" or "round" => CheckNumericFloatBuiltin(node),
             "int" or "bitnot" => CheckUnaryBuiltin(node, ExprTypes.Integer),
             "float" => CheckUnaryBuiltin(node, ExprTypes.Float),
             "string" or "trim" or "trimPrefix" or "trimSuffix" or "upper" or "lower" =>
@@ -587,7 +612,7 @@ public sealed class ExprChecker
         };
         if (node.Name is "reduce")
         {
-            scopeVariables["acc"] = accumulator;
+            scopeVariables["acc"] = ExprTypes.Any;
         }
 
         predicates.Add(new PredicateScope(array?.ElementType ?? ExprTypes.Any, scopeVariables));
@@ -620,8 +645,8 @@ public sealed class ExprChecker
             PredicateResult.Element => array?.ElementType ?? ExprTypes.Any,
             PredicateResult.Grouped => new MapTypeDescriptor(
                 [],
-                ExprTypes.ArrayOf(array?.ElementType ?? ExprTypes.Any),
-                predicateResult),
+                ExprTypes.ArrayOf(ExprTypes.Any),
+                ExprTypes.Any),
             PredicateResult.Reduced => predicateResult,
             _ => ExprTypes.Any,
         };
@@ -695,6 +720,12 @@ public sealed class ExprChecker
             : Error(node, $"invalid argument for {node.Name} (type {argument})");
     }
 
+    private ExprTypeDescriptor CheckNumericFloatBuiltin(BuiltinNode node)
+    {
+        ExprTypeDescriptor argument = CheckNumericBuiltin(node);
+        return ExprTypeRelations.IsUnknown(argument) ? ExprTypes.Any : ExprTypes.Float;
+    }
+
     private ExprTypeDescriptor CheckUnaryBuiltin(BuiltinNode node, ExprTypeDescriptor result)
     {
         if (node.Arguments.Count is not 1)
@@ -757,7 +788,29 @@ public sealed class ExprChecker
 
         ExprTypeDescriptor whenTrue = Visit(node.WhenTrue);
         ExprTypeDescriptor whenFalse = Visit(node.WhenFalse);
-        return ExprTypeRelations.CommonType(whenTrue, whenFalse);
+        if (whenTrue.Kind is ExprTypeKind.Nil && whenFalse.Kind is not ExprTypeKind.Nil)
+        {
+            return whenFalse;
+        }
+
+        if (whenFalse.Kind is ExprTypeKind.Nil && whenTrue.Kind is not ExprTypeKind.Nil)
+        {
+            return whenTrue;
+        }
+
+        if (!StrictlyAssignable(whenTrue, whenFalse))
+        {
+            return ExprTypes.Any;
+        }
+
+        if (whenTrue is ArrayTypeDescriptor trueArray && whenFalse is ArrayTypeDescriptor falseArray &&
+            (!StrictlyAssignable(trueArray.ElementType, falseArray.ElementType) ||
+             !StrictlyAssignable(falseArray.ElementType, trueArray.ElementType)))
+        {
+            return ExprTypes.ArrayOf(ExprTypes.Any);
+        }
+
+        return whenTrue;
     }
 
     private ExprTypeDescriptor VisitVariable(VariableDeclaratorNode node)
@@ -789,6 +842,23 @@ public sealed class ExprChecker
         return body;
     }
 
+    private static bool StrictlyAssignable(ExprTypeDescriptor value, ExprTypeDescriptor target)
+    {
+        if (ExprTypeRelations.IsUnknown(value) || ExprTypeRelations.IsUnknown(target))
+        {
+            return false;
+        }
+
+        if (value.Equals(target))
+        {
+            return true;
+        }
+
+        return value is ObjectTypeDescriptor valueObject &&
+            target is ObjectTypeDescriptor targetObject &&
+            targetObject.ClrType.IsAssignableFrom(valueObject.ClrType);
+    }
+
     private ExprTypeDescriptor VisitSequence(SequenceNode node)
     {
         if (node.Expressions.Count is 0)
@@ -813,45 +883,25 @@ public sealed class ExprChecker
         }
 
         ExprTypeDescriptor element = Visit(node.Elements[0]);
+        bool sameKind = true;
         for (var index = 1; index < node.Elements.Count; index++)
         {
-            element = ExprTypeRelations.CommonType(element, Visit(node.Elements[index]));
+            ExprTypeDescriptor current = Visit(node.Elements[index]);
+            sameKind &= current.Kind == element.Kind;
+            element = current;
         }
 
-        return ExprTypes.ArrayOf(element);
+        return ExprTypes.ArrayOf(sameKind ? element : ExprTypes.Any);
     }
 
     private ExprTypeDescriptor VisitMap(MapNode node)
     {
-        var fields = new Dictionary<string, ExprTypeDescriptor>(StringComparer.Ordinal);
-        ExprTypeDescriptor keyType = ExprTypes.Any;
-        ExprTypeDescriptor valueType = ExprTypes.Any;
-        var first = true;
         foreach (PairNode pair in node.Pairs)
         {
-            ExprTypeDescriptor pairType = VisitPair(pair);
-            _ = pairType;
-            ExprTypeDescriptor key = annotations[pair.Key].Type;
-            ExprTypeDescriptor value = annotations[pair.Value].Type;
-            if (first)
-            {
-                keyType = key;
-                valueType = value;
-                first = false;
-            }
-            else
-            {
-                keyType = ExprTypeRelations.CommonType(keyType, key);
-                valueType = ExprTypeRelations.CommonType(valueType, value);
-            }
-
-            if (pair.Key is StringNode stringKey)
-            {
-                fields[stringKey.Value] = value;
-            }
+            _ = VisitPair(pair);
         }
 
-        return new MapTypeDescriptor(fields, valueType, keyType);
+        return new MapTypeDescriptor([], ExprTypes.Any, ExprTypes.Any);
     }
 
     private ExprTypeDescriptor VisitPair(PairNode node)
@@ -1023,6 +1073,11 @@ public sealed class ExprChecker
             return ExprTypeRelations.Comparable(left, array.ElementType)
                 ? ExprTypes.Boolean
                 : Error(node, $"cannot use {left} as type {array.ElementType} in array");
+        }
+
+        if (right.Kind is ExprTypeKind.String && ExprTypeRelations.IsUnknown(left))
+        {
+            return ExprTypes.Boolean;
         }
 
         if (right is ObjectTypeDescriptor &&

@@ -76,6 +76,36 @@ class ValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate id"):
                 validate_case(copy.deepcopy(case), upstream, seen)
 
+    def test_rejects_provenance_that_is_only_a_test_name_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            upstream = Path(directory)
+            source = upstream / "sample_test.go"
+            source.write_text("func TestSampleExtended() {}\n", encoding="utf-8")
+            case = {
+                "__corpus_line": 1,
+                "schema": "expr.conformance.case/v1",
+                "id": "sample/case",
+                "expression": "true",
+                "expected": {
+                    "status": "success",
+                    "phase": "runtime",
+                    "type": "boolean",
+                    "value": {"kind": "boolean", "value": True},
+                },
+                "provenance": {
+                    "repository": REPOSITORY,
+                    "revision": REVISION,
+                    "path": "sample_test.go",
+                    "test": "TestSample",
+                    "line": 1,
+                },
+            }
+
+            with self.assertRaisesRegex(ValueError, "top-level test"):
+                validate_case(case, upstream, set())
+
 
 if __name__ == "__main__":
-    unittest.main()
+    suite = unittest.defaultTestLoader.discover(str(Path(__file__).resolve().parent), pattern="test_*.py")
+    result = unittest.TextTestRunner().run(suite)
+    raise SystemExit(0 if result.wasSuccessful() else 1)

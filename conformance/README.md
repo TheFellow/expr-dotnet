@@ -41,18 +41,22 @@ From the repository root, with the pinned upstream checkout at
 ```sh
 go test ./...                         # from tools/Expr.Oracle
 python3 conformance/scripts/validate.py
+python3 conformance/scripts/validate_traceability.py --json
+python3 conformance/scripts/refresh_traceability.py --write
 python3 conformance/scripts/refresh_expected.py > /tmp/upstream.jsonl
 python3 conformance/scripts/refresh_expected.py --write
 dotnet test tests/Expr.Tests/Expr.Tests.csproj --configuration Release --filter FullyQualifiedName~Expr.Tests.Conformance
 ```
 
 `validate.py` checks schema invariants, unique IDs, provenance paths and line
-numbers. It also proves that `inventory/builtins.json` matches the declaration
+numbers, including exact top-level Go test declarations. It also proves that
+`inventory/builtins.json` matches the declaration
 order in pinned `builtin.Builtins` and that every registered name has a corpus
-call. It then executes every case with the pinned oracle and diffs normalized
-outcomes. `refresh_expected.py` emits regenerated JSONL to standard output by
-default; `--write` performs an atomic corpus replacement. Review all oracle
-changes before committing them.
+call. The same command validates the complete 687-symbol upstream traceability
+inventory and reports its explicit gaps. It then executes every case with the
+pinned oracle and diffs normalized outcomes. `refresh_expected.py` emits
+regenerated JSONL to standard output by default; `--write` performs an atomic
+corpus replacement. Review all oracle changes before committing them.
 
 The .NET conformance tests execute every checked-in request through the public
 `ExprEngine` pipeline, compare the normalized outcome to the pinned Go result,
@@ -69,7 +73,7 @@ a nested call). Cases point back to the upstream test that motivated them.
 
 Expansion is measured by adding an inventory that maps every named upstream
 test to at least one corpus case, a host-specific .NET fixture, or a reviewed
-platform-difference entry. Later extraction passes should add parser failures,
-checker failures, every optimizer in both modes, hostile resource cases, and
-generated/fuzz regressions. Time-dependent `now()` is compile-only here; runtime
+platform-difference entry. That inventory now lives at
+`inventory/upstream-tests.json`; its 112 `gap` entries are concrete remaining
+work, not covered claims. Time-dependent `now()` is compile-only here; runtime
 clock behavior belongs in an injected-clock test fixture.

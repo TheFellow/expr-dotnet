@@ -71,12 +71,17 @@ internal static class ExprTypeRelations
 
         if (left.Kind is ExprTypeKind.Nil || right.Kind is ExprTypeKind.Nil)
         {
-            return left.Kind is ExprTypeKind.Nil && right.Kind is ExprTypeKind.Nil ||
-                left.Kind is ExprTypeKind.Nil && CanAssign(left, right) ||
-                right.Kind is ExprTypeKind.Nil && CanAssign(right, left);
+            // Expr permits equality checks against nil for every type. The comparison
+            // remains a bool even when nil could not be assigned to the other operand.
+            return true;
         }
 
         if (IsNumber(left) && IsNumber(right))
+        {
+            return true;
+        }
+
+        if (left.Kind is ExprTypeKind.Array && right.Kind is ExprTypeKind.Array)
         {
             return true;
         }
@@ -175,8 +180,18 @@ internal static class ExprTypeRelations
 
         foreach (KeyValuePair<string, ExprTypeDescriptor> field in target.Fields)
         {
-            if (!value.Fields.TryGetValue(field.Key, out ExprTypeDescriptor? valueType) ||
-                !CanAssign(valueType, field.Value))
+            if (value.Fields.TryGetValue(field.Key, out ExprTypeDescriptor? valueType))
+            {
+                if (!CanAssign(valueType, field.Value))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (value.AdditionalValueType is null ||
+                !CanAssign(value.AdditionalValueType, field.Value))
             {
                 return false;
             }

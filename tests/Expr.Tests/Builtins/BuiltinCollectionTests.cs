@@ -51,6 +51,24 @@ public sealed class BuiltinCollectionTests
     }
 
     [Fact]
+    public void Dynamic_collection_fallbacks_match_upstream_runtime_behavior()
+    {
+        var map = new Dictionary<string, object?> { ["value"] = 1L };
+        var stringMap = new Dictionary<string, string>();
+        var integerMap = new Dictionary<int, string> { [0] = "first", [-1] = "last" };
+
+        Assert.Null(Invoke("first", map));
+        Assert.Null(Invoke("last", map));
+        Assert.Null(Invoke("first", stringMap));
+        Assert.Null(Invoke("last", stringMap));
+        Assert.Equal("first", Invoke("first", integerMap));
+        Assert.Equal("last", Invoke("last", integerMap));
+        Assert.Same(map, Invoke("max", map));
+        Assert.Same(map, Invoke("min", map));
+        Assert.Empty(Values(Invoke("sort", map)));
+    }
+
+    [Fact]
     public void Get_does_not_reflect_unbound_host_members_or_methods()
     {
         var value = new MemberFixture();

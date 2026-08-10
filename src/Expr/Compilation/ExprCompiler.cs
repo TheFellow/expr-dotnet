@@ -324,8 +324,8 @@ public static class ExprCompiler
         {
             CompileValue(node.Left);
             CompileValue(node.Right);
-            ExprTypeDescriptor left = semanticModel.GetType(node.Left);
-            ExprTypeDescriptor right = semanticModel.GetType(node.Right);
+            ExprTypeDescriptor left = Semantics(node.Left)?.Type ?? ExprTypes.Any;
+            ExprTypeDescriptor right = Semantics(node.Right)?.Type ?? ExprTypes.Any;
             ExprOpcode opcode = left.Kind == right.Kind
                 ? left.Kind switch
                 {
@@ -471,21 +471,53 @@ public static class ExprCompiler
 
         private void CompileCall(CallNode node)
         {
-            foreach (SyntaxNode argument in node.Arguments)
-            {
-                CompileValue(argument);
-            }
-
             ExprNodeSemantics? callSemantics = Semantics(node);
             ExprNodeSemantics? calleeSemantics = Semantics(node.Callee);
             ExprFunction? function = callSemantics?.Function ?? calleeSemantics?.Function;
             if (function is not null)
             {
+                foreach (SyntaxNode argument in node.Arguments)
+                {
+                    CompileValue(argument);
+                }
+
                 EmitFunctionCall(node, function, node.Arguments.Count);
                 return;
             }
 
-            CompileNode(node.Callee);
+            if (optionalChains.Count > 0)
+            {
+                // Upstream evaluates call arguments before the callee. Spill them so
+                // an optional nil-callee jump leaves only nil on the operand stack,
+                // then restore the ordinary arguments-before-callee call layout.
+                int[] argumentSlots = new int[node.Arguments.Count];
+                for (var index = 0; index < node.Arguments.Count; index++)
+                {
+                    CompileValue(node.Arguments[index]);
+                    argumentSlots[index] = variableCount++;
+                    Emit(node.Arguments[index], ExprOpcode.OpStore, argumentSlots[index]);
+                }
+
+                CompileNode(node.Callee);
+                int calleeSlot = variableCount++;
+                Emit(node.Callee, ExprOpcode.OpStore, calleeSlot);
+                foreach (int argumentSlot in argumentSlots)
+                {
+                    Emit(node, ExprOpcode.OpLoadVar, argumentSlot);
+                }
+
+                Emit(node.Callee, ExprOpcode.OpLoadVar, calleeSlot);
+            }
+            else
+            {
+                foreach (SyntaxNode argument in node.Arguments)
+                {
+                    CompileValue(argument);
+                }
+
+                CompileNode(node.Callee);
+            }
+
             bool staticallyChecked = callSemantics?.Member?.Kind is ExprMemberBindingKind.ClrMethod ||
                 calleeSemantics?.Member?.Kind is ExprMemberBindingKind.ClrMethod;
             Emit(node, staticallyChecked ? ExprOpcode.OpCallTyped : ExprOpcode.OpCall, node.Arguments.Count);
@@ -549,6 +581,29 @@ public static class ExprCompiler
 
             ExprFunction function = ResolveBuiltin(node);
             int functionIndex = AddFunction(function);
+            if (IsUncheckedFastBuiltin(node, function))
+            {
+                // Expr's Fast builtins are unary VM operations even when an
+                // unchecked subtree contains more syntactic arguments. All
+                // arguments are still evaluated left-to-right and the last is
+                // consumed. Remove the otherwise-unobservable Go VM residue so
+                // the managed VM retains its strict stack-depth invariant.
+                Emit(node, ExprOpcode.OpCallBuiltin1, functionIndex);
+                if (node.Arguments.Count > 1)
+                {
+                    int resultSlot = variableCount++;
+                    Emit(node, ExprOpcode.OpStore, resultSlot);
+                    for (var index = 1; index < node.Arguments.Count; index++)
+                    {
+                        Emit(node, ExprOpcode.OpPop);
+                    }
+
+                    Emit(node, ExprOpcode.OpLoadVar, resultSlot);
+                }
+
+                return;
+            }
+
             if (function.SafeInvoker is not null)
             {
                 Emit(node, ExprOpcode.OpLoadFunc, functionIndex);
@@ -965,6 +1020,21 @@ public static class ExprCompiler
             }
 
             throw new ExprCompilationException($"unknown builtin {node.Name}", node.Location);
+        }
+
+        private bool IsUncheckedFastBuiltin(BuiltinNode node, ExprFunction function)
+        {
+            if (Semantics(node) is not null ||
+                configuration.DisabledBuiltins.Contains(node.Name) ||
+                !configuration.Builtins.TryGetValue(node.Name, out ExprFunction? builtin) ||
+                !ReferenceEquals(function, builtin))
+            {
+                return false;
+            }
+
+            return node.Name is
+                "len" or "type" or "abs" or "ceil" or "floor" or "round" or
+                "int" or "float" or "string" or "upper" or "lower";
         }
 
         private void EmitFunctionCall(SyntaxNode node, ExprFunction function, int argumentCount)

@@ -63,6 +63,32 @@ public sealed class PredicateExecutionTests
     }
 
     [Fact]
+    public void Predicate_builtins_only_use_map_length_when_item_is_not_read()
+    {
+        var environment = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["first"] = 1L,
+            ["second"] = 2L,
+        };
+        ExprConfiguration configuration = ExprConfiguration.Default.WithEnvironment(
+            ExprEnvironmentSchema.FromDictionary(environment));
+
+        object? result = ExprEngine.Evaluate(
+            "all($env, true)",
+            environment,
+            configuration,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(true, result);
+
+        Assert.Throws<ExprExecutionException>(() => ExprEngine.Evaluate(
+            "all($env, # != nil)",
+            environment,
+            configuration,
+            cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public void SortBy_keeps_unordered_nan_keys_stable()
     {
         var environment = new Dictionary<string, object?>(StringComparer.Ordinal)

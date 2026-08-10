@@ -18,6 +18,7 @@ public sealed class CheckerTests
     public static TheoryData<string, ExprTypeDescriptor> ValidExpressions => new()
     {
         { "nil == nil", ExprTypes.Boolean },
+        { "true != nil", ExprTypes.Boolean },
         { "!true", ExprTypes.Boolean },
         { "1 + 2 * 3", ExprTypes.Integer },
         { "1 + 2.5", ExprTypes.Float },

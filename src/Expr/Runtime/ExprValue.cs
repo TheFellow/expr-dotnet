@@ -266,7 +266,12 @@ public static class ExprValue
         object? right = item.Right;
         if (left is null || right is null)
         {
-            return left is null && right is null;
+            return ExprCollections.IsNil(left) && ExprCollections.IsNil(right);
+        }
+
+        if (left is IExprNilValue || right is IExprNilValue)
+        {
+            return left is IExprNilValue && right is IExprNilValue;
         }
 
         ExprValueKind leftKind = Classify(left);

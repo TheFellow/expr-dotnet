@@ -6,6 +6,45 @@ using System.Linq;
 
 namespace Expr.Runtime;
 
+internal interface IExprNilValue;
+
+internal sealed class ExprNilArray : IExprArray, IExprNilValue
+{
+    internal static ExprNilArray Instance { get; } = new();
+
+    public Type ElementType => typeof(object);
+
+    public int Count => 0;
+
+    public object? this[int index] => throw new ArgumentOutOfRangeException(nameof(index));
+
+    public IEnumerator<object?> GetEnumerator() => Enumerable.Empty<object?>().GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+internal sealed class ExprTypedArray : IExprArray
+{
+    private readonly IReadOnlyList<object?> values;
+
+    internal ExprTypedArray(IEnumerable<object?> values, Type elementType)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        ElementType = elementType ?? throw new ArgumentNullException(nameof(elementType));
+        this.values = Array.AsReadOnly(values.ToArray());
+    }
+
+    public Type ElementType { get; }
+
+    public int Count => values.Count;
+
+    public object? this[int index] => values[index];
+
+    public IEnumerator<object?> GetEnumerator() => values.GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
 /// <summary>Provides indexed access to an Expr array value.</summary>
 public interface IExprArray : IEnumerable<object?>
 {
@@ -218,7 +257,13 @@ public sealed class ExprReadOnlyDictionaryAdapter<TKey, TValue> : IExprMap
     /// <inheritdoc />
     public bool TryGetValue(object? key, out object? value)
     {
-        if (key is TKey typedKey && values.TryGetValue(typedKey, out TValue? typedValue))
+        object? candidate = key;
+        if (key is long integer && ExprCollections.TryConvertIntegerKey(integer, typeof(TKey), out object? converted))
+        {
+            candidate = converted;
+        }
+
+        if (candidate is TKey typedKey && values.TryGetValue(typedKey, out TValue? typedValue))
         {
             value = typedValue;
             return true;
@@ -244,6 +289,37 @@ public sealed class ExprReadOnlyDictionaryAdapter<TKey, TValue> : IExprMap
 /// <summary>Adapts statically known .NET collection contracts to Expr collection access.</summary>
 public static class ExprCollections
 {
+    internal static bool IsNil(object? value) => value is null or IExprNilValue;
+
+    internal static bool TryConvertIntegerKey(long value, Type targetType, out object? converted)
+    {
+        ArgumentNullException.ThrowIfNull(targetType);
+        try
+        {
+            converted = Type.GetTypeCode(targetType) switch
+            {
+                TypeCode.SByte => checked((sbyte)value),
+                TypeCode.Byte => checked((byte)value),
+                TypeCode.Int16 => checked((short)value),
+                TypeCode.UInt16 => checked((ushort)value),
+                TypeCode.Int32 => checked((int)value),
+                TypeCode.UInt32 => checked((uint)value),
+                TypeCode.Int64 => value,
+                TypeCode.UInt64 => checked((ulong)value),
+                TypeCode.Object when targetType == typeof(object) => value,
+                TypeCode.Object when targetType == typeof(nint) => checked((nint)value),
+                TypeCode.Object when targetType == typeof(nuint) => checked((nuint)value),
+                _ => null,
+            };
+            return converted is not null;
+        }
+        catch (OverflowException)
+        {
+            converted = null;
+            return false;
+        }
+    }
+
     /// <summary>Creates a reflection-free Expr array view over a generic read-only list.</summary>
     /// <typeparam name="T">The declared element type.</typeparam>
     /// <param name="values">The list to expose.</param>
@@ -336,6 +412,25 @@ public static class ExprCollections
         }
     }
 
+    internal static object? GetMapDefaultValue(IExprMap map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        Type valueType = map.ValueType;
+        if (valueType == typeof(string))
+        {
+            return string.Empty;
+        }
+
+        if (valueType.IsArray || typeof(IExprArray).IsAssignableFrom(valueType))
+        {
+            return ExprNilArray.Instance;
+        }
+
+        return valueType.IsValueType
+            ? Array.CreateInstance(valueType, 1).GetValue(0)
+            : null;
+    }
+
     private sealed class ClrArrayAdapter(Array array) : IExprArray
     {
         public Type ElementType => array.GetType().GetElementType() ?? typeof(object);
@@ -374,16 +469,31 @@ public static class ExprCollections
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    private sealed class DictionaryAdapter(IDictionary dictionary) : IExprMap
+    private sealed class DictionaryAdapter : IExprMap
     {
-        public Type KeyType => typeof(object);
+        private readonly IDictionary dictionary;
+        private readonly Type keyType;
+        private readonly Type valueType;
 
-        public Type ValueType => typeof(object);
+        internal DictionaryAdapter(IDictionary dictionary)
+        {
+            this.dictionary = dictionary;
+            (keyType, valueType) = GetDictionaryTypes(dictionary.GetType());
+        }
+
+        public Type KeyType => keyType;
+
+        public Type ValueType => valueType;
 
         public int Count => dictionary.Count;
 
         public bool TryGetValue(object? key, out object? value)
         {
+            if (key is long integer && TryConvertIntegerKey(integer, keyType, out object? converted))
+            {
+                key = converted;
+            }
+
             if (key is null)
             {
                 foreach (DictionaryEntry entry in dictionary)
@@ -414,6 +524,25 @@ public static class ExprCollections
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private static (Type Key, Type Value) GetDictionaryTypes(Type dictionaryType)
+        {
+            for (Type? current = dictionaryType; current is not null; current = current.BaseType)
+            {
+                if (!current.IsGenericType)
+                {
+                    continue;
+                }
+
+                Type[] arguments = current.GetGenericArguments();
+                if (arguments.Length is 2)
+                {
+                    return (arguments[0], arguments[1]);
+                }
+            }
+
+            return (typeof(object), typeof(object));
+        }
     }
 
 }

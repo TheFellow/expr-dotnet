@@ -37,9 +37,22 @@ expressions, Unicode handling, and native collection types as each area lands.
   `fromBase64` result containing invalid UTF-8 uses replacement characters;
   callers that require arbitrary binary values should keep them Base64-encoded
   at the expression boundary.
-- `toJSON` maps CLR objects through readable public properties and public
-  fields, with `JsonPropertyName` and `JsonIgnore` as the .NET equivalents of
-  Go's exported fields and `json` tags. Collection and scalar JSON values have
-  the same expression-visible encoding as Go.
+- Unschematized values typed as `any` do not expose arbitrary CLR members or
+  methods. Consumers register a typed environment schema when expressions need
+  host-object access. This is an intentional security boundary: it prevents an
+  expression from walking from an untrusted value into reflection metadata or
+  invoking an unexpected host method.
+- `get` accepts Expr maps, arrays, and strings. It does not reflect over an
+  arbitrary CLR object; expose the desired member through a typed schema or
+  adapt the object to an Expr map first.
+- `toJSON` accepts Expr scalars, arrays, and maps. It does not enumerate an
+  arbitrary object's getters because getters may execute host code. Consumers
+  serialize or adapt domain objects explicitly at the trust boundary.
+- Native AOT supports explicit scalar, collection, map, delegate, and typed
+  schema paths. Reflection-based schema discovery is rejected when dynamic code
+  is unavailable so a trimmed binary cannot silently compile an incomplete
+  host contract.
 
-No expression-language semantic differences are currently accepted.
+These host-integration restrictions do not change the expression language.
+They are reviewed platform/security mappings around values supplied by the
+embedding application.

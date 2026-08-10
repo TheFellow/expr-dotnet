@@ -216,14 +216,14 @@ internal sealed class ExprExecutionMachine
 
                 break;
             case ExprOpcode.OpJumpIfNil:
-                if (Current() is null)
+                if (ExprCollections.IsNil(Current()))
                 {
                     instructionPointer = ForwardTarget(currentIndex, argument);
                 }
 
                 break;
             case ExprOpcode.OpJumpIfNotNil:
-                if (Current() is not null)
+                if (!ExprCollections.IsNil(Current()))
                 {
                     instructionPointer = ForwardTarget(currentIndex, argument);
                 }
@@ -585,11 +585,6 @@ internal sealed class ExprExecutionMachine
     {
         PredicateScope scope = CurrentScope();
         object? key = Pop();
-        if (!ExprExecutionOperations.IsValidMapKey(key))
-        {
-            throw Error($"cannot use {key?.GetType().FullName ?? "nil"} as a key for groupBy");
-        }
-
         if (scope.Accumulator is not GroupAccumulator accumulator)
         {
             throw Error("groupBy accumulator is corrupt");
@@ -641,6 +636,12 @@ internal sealed class ExprExecutionMachine
         else if (source is string text)
         {
             array = new ExprArray(Encoding.UTF8.GetBytes(text).Select(static value => (object?)value));
+        }
+        else if (ExprCollections.TryAsMap(source, out IExprMap? map) && map is not null)
+        {
+            // Pinned Expr's VM accepts a map scope and its length, but reflect.Index on
+            // the map panics if the predicate actually reads #. Preserve that behavior.
+            array = new MapPredicateSource(map.Count);
         }
         else
         {
@@ -922,6 +923,19 @@ internal sealed class ExprExecutionMachine
         }
     }
 
+    private sealed class MapPredicateSource(int count) : IExprArray
+    {
+        public Type ElementType => typeof(object);
+
+        public int Count { get; } = count;
+
+        public object? this[int index] => throw Error("cannot index map predicate source");
+
+        public IEnumerator<object?> GetEnumerator() => throw Error("cannot enumerate map predicate source");
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private sealed class GroupAccumulator
     {
         private readonly List<Group> groups = [];
@@ -955,7 +969,7 @@ internal sealed class ExprExecutionMachine
 
             public Type KeyType => typeof(object);
 
-            public Type ValueType => typeof(object);
+            public Type ValueType => typeof(IExprArray);
 
             public int Count => entries.Count;
 

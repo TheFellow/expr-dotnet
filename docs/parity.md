@@ -13,7 +13,8 @@ public API spelling: the .NET API should remain idiomatic C#.
 
 The pinned revision contains:
 
-- 585 named Go tests and approximately 15,500 lines of non-vendored tests
+- 585 top-level Go tests, 42 executable examples, and approximately 15,500
+  lines of non-vendored tests
 - 59 benchmarks and one fuzz harness
 - 23 public AST node kinds
 - 71 standard built-ins
@@ -21,6 +22,8 @@ The pinned revision contains:
 
 These counts are an inventory aid, not a substitute for behavioral coverage.
 The semport ledger is the source of truth for commits examined after the pin.
+The symbol-level [upstream traceability inventory](upstream-test-traceability.md)
+records evidence for all 687 upstream entry points with zero explicit gaps.
 
 ## Required surfaces
 
@@ -110,3 +113,8 @@ Feature parity may be claimed only when all of the following are true:
    and the Native AOT smoke application pass on supported platforms.
 8. The Attractor pipeline validates and every upstream commit through the
    current target has a terminal ledger disposition.
+
+The first gate is enforced structurally by
+`conformance/scripts/validate_traceability.py`. Its `--require-no-gaps` mode is
+the release-parity gate; ordinary validation accepts, counts, and reports gaps
+so incomplete coverage cannot be hidden behind a green inventory check.
