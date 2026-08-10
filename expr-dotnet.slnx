@@ -6,6 +6,10 @@
     <Project Path="benchmarks/Expr.Benchmarks/Expr.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Expr.Security.Tests/Expr.Security.Tests.csproj" />
     <Project Path="tests/Expr.Tests/Expr.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Expr.NativeAot/Expr.NativeAot.csproj" />
   </Folder>
 </Solution>

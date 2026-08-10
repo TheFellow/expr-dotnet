@@ -49,3 +49,18 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: dotnet pack src/Expr/Expr.csproj --configuration Release --no-build --output artifacts/packages
 
+  native-aot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore Native AOT sample
+        run: dotnet restore samples/Expr.NativeAot/Expr.NativeAot.csproj --runtime linux-x64
+      - name: Publish Native AOT sample
+        run: dotnet publish samples/Expr.NativeAot/Expr.NativeAot.csproj --configuration Release --runtime linux-x64 --no-restore --output artifacts/native-aot
+      - name: Run Native AOT sample
+        run: ./artifacts/native-aot/Expr.NativeAot
