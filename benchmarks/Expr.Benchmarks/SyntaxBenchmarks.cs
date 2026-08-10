@@ -16,6 +16,12 @@ public class SyntaxBenchmarks
     private const string SmallExpression = "Price >= 10 && Active";
     private const string PredicateExpression =
         "let adults = filter(users, .age >= 18); all(adults, {.active && #index >= 0})";
+    private const string UpstreamParserExpression = """
+        /* Showing a representative lexer and parser workload. */
+        let value = trim("contains escapes \n\"\\ 😀 and non ASCII ñ");
+        len(value) == 0x2A;
+        whatever
+        """;
 
     private readonly SyntaxLexer lexer = new();
     private readonly SyntaxParser parser = new();
@@ -40,6 +46,11 @@ public class SyntaxBenchmarks
     /// <returns>The produced tree.</returns>
     [Benchmark]
     public SyntaxTree ParsePredicate() => parser.Parse(PredicateExpression);
+
+    /// <summary>Measures the comment, escape, Unicode, binding, and sequence workload from upstream parser benchmarks.</summary>
+    /// <returns>The produced tree.</returns>
+    [Benchmark]
+    public SyntaxTree ParseUpstreamWorkload() => parser.Parse(UpstreamParserExpression);
 
     /// <summary>Measures post-order traversal without allocating a node list.</summary>
     /// <returns>The number of nodes observed.</returns>
