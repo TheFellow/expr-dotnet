@@ -11,32 +11,56 @@ public abstract record SyntaxNode(SourceLocation Location);
 
 /// <summary>Represents the Expr <c>nil</c> literal.</summary>
 /// <param name="Location">The source location.</param>
-public sealed record NilNode(SourceLocation Location) : SyntaxNode(Location);
+public sealed record NilNode(SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents an identifier.</summary>
 /// <param name="Name">The identifier name.</param>
 /// <param name="Location">The source location.</param>
-public sealed record IdentifierNode(string Name, SourceLocation Location) : SyntaxNode(Location);
+public sealed record IdentifierNode(string Name, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents an integer literal.</summary>
 /// <param name="Value">The literal value.</param>
 /// <param name="Location">The source location.</param>
-public sealed record IntegerNode(long Value, SourceLocation Location) : SyntaxNode(Location);
+public sealed record IntegerNode(long Value, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a floating-point literal.</summary>
 /// <param name="Value">The literal value.</param>
 /// <param name="Location">The source location.</param>
-public sealed record FloatNode(double Value, SourceLocation Location) : SyntaxNode(Location);
+public sealed record FloatNode(double Value, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a Boolean literal.</summary>
 /// <param name="Value">The literal value.</param>
 /// <param name="Location">The source location.</param>
-public sealed record BooleanNode(bool Value, SourceLocation Location) : SyntaxNode(Location);
+public sealed record BooleanNode(bool Value, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a string literal.</summary>
 /// <param name="Value">The decoded string value.</param>
 /// <param name="Location">The source location.</param>
-public sealed record StringNode(string Value, SourceLocation Location) : SyntaxNode(Location);
+public sealed record StringNode(string Value, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a byte-string literal.</summary>
 public sealed record BytesNode : SyntaxNode
@@ -54,30 +78,49 @@ public sealed record BytesNode : SyntaxNode
 
     /// <summary>Gets a defensive copy of the decoded bytes.</summary>
     public ReadOnlyMemory<byte> Value => value.ToArray();
+
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
 }
 
 /// <summary>Represents a constant introduced by an optimizer or AST consumer.</summary>
 /// <param name="Value">The constant value.</param>
 /// <param name="Location">The source location.</param>
-public sealed record ConstantNode(object? Value, SourceLocation Location) : SyntaxNode(Location);
+public sealed record ConstantNode(object? Value, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a unary operation.</summary>
 /// <param name="Operator">The operator spelling.</param>
 /// <param name="Operand">The operand.</param>
 /// <param name="Location">The operator source location.</param>
-public sealed record UnaryNode(string Operator, SyntaxNode Operand, SourceLocation Location) : SyntaxNode(Location);
+public sealed record UnaryNode(string Operator, SyntaxNode Operand, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a binary operation.</summary>
 /// <param name="Operator">The operator spelling.</param>
 /// <param name="Left">The left operand.</param>
 /// <param name="Right">The right operand.</param>
 /// <param name="Location">The operator source location.</param>
-public sealed record BinaryNode(string Operator, SyntaxNode Left, SyntaxNode Right, SourceLocation Location) : SyntaxNode(Location);
+public sealed record BinaryNode(string Operator, SyntaxNode Left, SyntaxNode Right, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Groups one or more optional member accesses.</summary>
 /// <param name="Expression">The grouped expression.</param>
 /// <param name="Location">The source location.</param>
-public sealed record ChainNode(SyntaxNode Expression, SourceLocation Location) : SyntaxNode(Location);
+public sealed record ChainNode(SyntaxNode Expression, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents property or index access.</summary>
 /// <param name="Target">The value being accessed.</param>
@@ -90,7 +133,11 @@ public sealed record MemberNode(
     SyntaxNode Property,
     bool Optional,
     bool IsMethod,
-    SourceLocation Location) : SyntaxNode(Location);
+    SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents array or string slicing.</summary>
 /// <param name="Target">The value being sliced.</param>
@@ -101,7 +148,11 @@ public sealed record SliceNode(
     SyntaxNode Target,
     SyntaxNode? From,
     SyntaxNode? To,
-    SourceLocation Location) : SyntaxNode(Location);
+    SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents an ordinary function or method call.</summary>
 public sealed record CallNode : SyntaxNode
@@ -122,6 +173,9 @@ public sealed record CallNode : SyntaxNode
 
     /// <summary>Gets the call arguments.</summary>
     public IReadOnlyList<SyntaxNode> Arguments { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
 }
 
 /// <summary>Represents a call to an Expr built-in.</summary>
@@ -164,17 +218,28 @@ public sealed record BuiltinNode : SyntaxNode
 
     /// <summary>Gets an optional optimizer-generated count threshold.</summary>
     public int? Threshold { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
 }
 
 /// <summary>Wraps a predicate argument.</summary>
 /// <param name="Body">The predicate body.</param>
 /// <param name="Location">The predicate source location.</param>
-public sealed record PredicateNode(SyntaxNode Body, SourceLocation Location) : SyntaxNode(Location);
+public sealed record PredicateNode(SyntaxNode Body, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents the current predicate value or a named predicate pointer.</summary>
 /// <param name="Name">The pointer name, or an empty string for the current value.</param>
 /// <param name="Location">The pointer source location.</param>
-public sealed record PointerNode(string Name, SourceLocation Location) : SyntaxNode(Location);
+public sealed record PointerNode(string Name, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents a conditional expression.</summary>
 /// <param name="Condition">The condition.</param>
@@ -187,7 +252,11 @@ public sealed record ConditionalNode(
     SyntaxNode WhenTrue,
     SyntaxNode WhenFalse,
     bool IsTernary,
-    SourceLocation Location) : SyntaxNode(Location);
+    SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents an Expr <c>let</c> binding and its body.</summary>
 /// <param name="Name">The variable name.</param>
@@ -198,7 +267,11 @@ public sealed record VariableDeclaratorNode(
     string Name,
     SyntaxNode Value,
     SyntaxNode Body,
-    SourceLocation Location) : SyntaxNode(Location);
+    SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 /// <summary>Represents semicolon-separated expressions.</summary>
 public sealed record SequenceNode : SyntaxNode
@@ -211,6 +284,9 @@ public sealed record SequenceNode : SyntaxNode
 
     /// <summary>Gets the sequence expressions.</summary>
     public IReadOnlyList<SyntaxNode> Expressions { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
 }
 
 /// <summary>Represents an array literal.</summary>
@@ -224,6 +300,9 @@ public sealed record ArrayNode : SyntaxNode
 
     /// <summary>Gets the array elements.</summary>
     public IReadOnlyList<SyntaxNode> Elements { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
 }
 
 /// <summary>Represents a map literal.</summary>
@@ -237,13 +316,20 @@ public sealed record MapNode : SyntaxNode
 
     /// <summary>Gets the map pairs.</summary>
     public IReadOnlyList<PairNode> Pairs { get; }
+
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
 }
 
 /// <summary>Represents one key-value pair in a map literal.</summary>
 /// <param name="Key">The key expression.</param>
 /// <param name="Value">The value expression.</param>
 /// <param name="Location">The map opening-brace source location.</param>
-public sealed record PairNode(SyntaxNode Key, SyntaxNode Value, SourceLocation Location) : SyntaxNode(Location);
+public sealed record PairNode(SyntaxNode Key, SyntaxNode Value, SourceLocation Location) : SyntaxNode(Location)
+{
+    /// <inheritdoc />
+    public override string ToString() => SyntaxPrinter.Print(this);
+}
 
 internal static class SyntaxCollections
 {

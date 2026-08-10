@@ -11,19 +11,53 @@ public interface ISyntaxVisitor
     void Visit(SyntaxNode node);
 }
 
+/// <summary>Specifies when a node is yielded relative to its children.</summary>
+public enum SyntaxTraversalOrder
+{
+    /// <summary>Yields each node before its children.</summary>
+    PreOrder,
+
+    /// <summary>Yields each node after its children.</summary>
+    PostOrder,
+}
+
+/// <summary>Configures guarded syntax-tree traversal.</summary>
+public sealed record SyntaxWalkerOptions
+{
+    /// <summary>Gets or initializes the maximum nested syntax depth.</summary>
+    public int MaximumDepth { get; init; } = 65_536;
+
+    /// <summary>Gets or initializes the maximum number of visited node occurrences.</summary>
+    public int MaximumNodeCount { get; init; } = 1_000_000;
+}
+
 /// <summary>Walks and searches immutable Expr syntax trees without recursive stack growth.</summary>
 public static class SyntaxWalker
 {
     /// <summary>Walks a tree depth-first and invokes the visitor after each node's children.</summary>
     /// <param name="node">The root node.</param>
     /// <param name="visitor">The visitor.</param>
-    public static void Walk(SyntaxNode node, ISyntaxVisitor visitor)
+    /// <param name="options">Optional traversal limits.</param>
+    public static void Walk(SyntaxNode node, ISyntaxVisitor visitor, SyntaxWalkerOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(visitor);
-        foreach (var current in TraversePostOrder(node))
+        foreach (var current in Traverse(node, SyntaxTraversalOrder.PostOrder, options))
         {
             visitor.Visit(current);
+        }
+    }
+
+    /// <summary>Walks a tree depth-first and invokes a delegate after each node's children.</summary>
+    /// <param name="node">The root node.</param>
+    /// <param name="visitor">The visitor delegate.</param>
+    /// <param name="options">Optional traversal limits.</param>
+    public static void Walk(SyntaxNode node, Action<SyntaxNode> visitor, SyntaxWalkerOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(visitor);
+        foreach (var current in Traverse(node, SyntaxTraversalOrder.PostOrder, options))
+        {
+            visitor(current);
         }
     }
 
@@ -31,12 +65,16 @@ public static class SyntaxWalker
     /// <param name="node">The root node.</param>
     /// <param name="predicate">The match predicate.</param>
     /// <returns>The last matching node, or <see langword="null"/>.</returns>
-    public static SyntaxNode? Find(SyntaxNode node, Func<SyntaxNode, bool> predicate)
+    /// <param name="options">Optional traversal limits.</param>
+    public static SyntaxNode? Find(
+        SyntaxNode node,
+        Func<SyntaxNode, bool> predicate,
+        SyntaxWalkerOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(predicate);
         SyntaxNode? result = null;
-        foreach (var current in TraversePostOrder(node))
+        foreach (var current in Traverse(node, SyntaxTraversalOrder.PostOrder, options))
         {
             if (predicate(current))
             {
@@ -47,91 +85,146 @@ public static class SyntaxWalker
         return result;
     }
 
-    private static IEnumerable<SyntaxNode> TraversePostOrder(SyntaxNode root)
+    /// <summary>Enumerates a tree in deterministic depth-first order.</summary>
+    /// <param name="node">The root node, which is included in the result.</param>
+    /// <param name="order">Whether nodes are yielded before or after their children.</param>
+    /// <param name="options">Optional traversal limits.</param>
+    /// <returns>A guarded, lazy syntax-node sequence.</returns>
+    public static IEnumerable<SyntaxNode> Traverse(
+        SyntaxNode node,
+        SyntaxTraversalOrder order = SyntaxTraversalOrder.PostOrder,
+        SyntaxWalkerOptions? options = null)
     {
-        var stack = new Stack<(SyntaxNode Node, bool Visited)>();
-        stack.Push((root, false));
+        ArgumentNullException.ThrowIfNull(node);
+        if (!Enum.IsDefined(order))
+        {
+            throw new ArgumentOutOfRangeException(nameof(order), order, "Unknown syntax traversal order.");
+        }
+
+        var limits = options ?? new SyntaxWalkerOptions();
+        if (limits.MaximumDepth <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Maximum depth must be positive.");
+        }
+
+        if (limits.MaximumNodeCount <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Maximum node count must be positive.");
+        }
+
+        var path = new HashSet<SyntaxNode>(ReferenceEqualityComparer.Instance);
+        var stack = new Stack<TraversalFrame>();
+        var nodeCount = 0;
+        stack.Push(new TraversalFrame(node, 0, false));
         while (stack.Count > 0)
         {
-            var (node, visited) = stack.Pop();
-            if (visited)
+            var frame = stack.Pop();
+            if (frame.Exiting)
             {
-                yield return node;
+                _ = path.Remove(frame.Node);
+                if (order == SyntaxTraversalOrder.PostOrder)
+                {
+                    yield return frame.Node;
+                }
+
                 continue;
             }
 
-            stack.Push((node, true));
-            PushChildrenInReverse(stack, node);
+            if (frame.Depth >= limits.MaximumDepth)
+            {
+                throw new InvalidOperationException(
+                    $"Syntax tree exceeds the configured walker depth limit of {limits.MaximumDepth}.");
+            }
+
+            nodeCount++;
+            if (nodeCount > limits.MaximumNodeCount)
+            {
+                throw new InvalidOperationException(
+                    $"Syntax tree exceeds the configured walker node limit of {limits.MaximumNodeCount}.");
+            }
+
+            if (!path.Add(frame.Node))
+            {
+                throw new InvalidOperationException("Syntax tree contains a reference cycle.");
+            }
+
+            stack.Push(frame with { Exiting = true });
+            PushChildrenInReverse(stack, frame.Node, frame.Depth + 1);
+
+            if (order == SyntaxTraversalOrder.PreOrder)
+            {
+                yield return frame.Node;
+            }
         }
     }
 
-    private static void PushChildrenInReverse(Stack<(SyntaxNode Node, bool Visited)> stack, SyntaxNode node)
+    private static void PushChildrenInReverse(Stack<TraversalFrame> stack, SyntaxNode node, int depth)
     {
         switch (node)
         {
             case UnaryNode unary:
-                Push(stack, unary.Operand);
+                Push(stack, unary.Operand, depth);
                 break;
             case BinaryNode binary:
-                Push(stack, binary.Right);
-                Push(stack, binary.Left);
+                Push(stack, binary.Right, depth);
+                Push(stack, binary.Left, depth);
                 break;
             case ChainNode chain:
-                Push(stack, chain.Expression);
+                Push(stack, chain.Expression, depth);
                 break;
             case MemberNode member:
-                Push(stack, member.Property);
-                Push(stack, member.Target);
+                Push(stack, member.Property, depth);
+                Push(stack, member.Target, depth);
                 break;
             case SliceNode slice:
                 if (slice.To is not null)
                 {
-                    Push(stack, slice.To);
+                    Push(stack, slice.To, depth);
                 }
 
                 if (slice.From is not null)
                 {
-                    Push(stack, slice.From);
+                    Push(stack, slice.From, depth);
                 }
 
-                Push(stack, slice.Target);
+                Push(stack, slice.Target, depth);
                 break;
             case CallNode call:
-                PushListInReverse(stack, call.Arguments);
-                Push(stack, call.Callee);
+                PushListInReverse(stack, call.Arguments, depth);
+                Push(stack, call.Callee, depth);
                 break;
             case BuiltinNode builtin:
                 if (builtin.Map is not null)
                 {
-                    Push(stack, builtin.Map);
+                    Push(stack, builtin.Map, depth);
                 }
 
-                PushListInReverse(stack, builtin.Arguments);
+                PushListInReverse(stack, builtin.Arguments, depth);
                 break;
             case PredicateNode predicate:
-                Push(stack, predicate.Body);
+                Push(stack, predicate.Body, depth);
                 break;
             case ConditionalNode conditional:
-                Push(stack, conditional.WhenFalse);
-                Push(stack, conditional.WhenTrue);
-                Push(stack, conditional.Condition);
+                Push(stack, conditional.WhenFalse, depth);
+                Push(stack, conditional.WhenTrue, depth);
+                Push(stack, conditional.Condition, depth);
                 break;
             case VariableDeclaratorNode variable:
-                Push(stack, variable.Body);
-                Push(stack, variable.Value);
+                Push(stack, variable.Body, depth);
+                Push(stack, variable.Value, depth);
                 break;
             case SequenceNode sequence:
-                PushListInReverse(stack, sequence.Expressions);
+                PushListInReverse(stack, sequence.Expressions, depth);
                 break;
             case ArrayNode array:
-                PushListInReverse(stack, array.Elements);
+                PushListInReverse(stack, array.Elements, depth);
                 break;
             case MapNode map:
-                PushListInReverse(stack, map.Pairs);
+                PushListInReverse(stack, map.Pairs, depth);
                 break;
             case PairNode pair:
-                Push(stack, pair.Value);
-                Push(stack, pair.Key);
+                Push(stack, pair.Value, depth);
+                Push(stack, pair.Key, depth);
                 break;
             case NilNode or IdentifierNode or IntegerNode or FloatNode or BooleanNode or
                 StringNode or BytesNode or ConstantNode or PointerNode:
@@ -141,19 +234,79 @@ public static class SyntaxWalker
         }
     }
 
-    private static void PushListInReverse<T>(
-        Stack<(SyntaxNode Node, bool Visited)> stack,
-        IReadOnlyList<T> nodes)
+    private static void PushListInReverse<T>(Stack<TraversalFrame> stack, IReadOnlyList<T> nodes, int depth)
         where T : SyntaxNode
     {
         for (var index = nodes.Count - 1; index >= 0; index--)
         {
-            Push(stack, nodes[index]);
+            Push(stack, nodes[index], depth);
         }
     }
 
-    private static void Push(Stack<(SyntaxNode Node, bool Visited)> stack, SyntaxNode node) =>
-        stack.Push((node, false));
+    private static void Push(Stack<TraversalFrame> stack, SyntaxNode node, int depth) =>
+        stack.Push(new TraversalFrame(node, depth, false));
+
+    /// <summary>Gets the immediate children of a node in source evaluation order.</summary>
+    /// <param name="node">The syntax node.</param>
+    /// <returns>An immutable snapshot of immediate children.</returns>
+    public static IReadOnlyList<SyntaxNode> GetChildren(SyntaxNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return node switch
+        {
+            UnaryNode unary => [unary.Operand],
+            BinaryNode binary => [binary.Left, binary.Right],
+            ChainNode chain => [chain.Expression],
+            MemberNode member => [member.Target, member.Property],
+            SliceNode { From: null, To: null } slice => [slice.Target],
+            SliceNode { From: null } slice => [slice.Target, slice.To!],
+            SliceNode { To: null } slice => [slice.Target, slice.From],
+            SliceNode slice => [slice.Target, slice.From, slice.To],
+            CallNode call => CopyWithHead(call.Callee, call.Arguments),
+            BuiltinNode { Map: null } builtin => SyntaxCollections.Copy(builtin.Arguments),
+            BuiltinNode builtin => CopyWithTail(builtin.Arguments, builtin.Map),
+            PredicateNode predicate => [predicate.Body],
+            ConditionalNode conditional => [conditional.Condition, conditional.WhenTrue, conditional.WhenFalse],
+            VariableDeclaratorNode variable => [variable.Value, variable.Body],
+            SequenceNode sequence => SyntaxCollections.Copy(sequence.Expressions),
+            ArrayNode array => SyntaxCollections.Copy(array.Elements),
+            MapNode map => SyntaxCollections.Copy<SyntaxNode>(map.Pairs),
+            PairNode pair => [pair.Key, pair.Value],
+            NilNode or IdentifierNode or IntegerNode or FloatNode or BooleanNode or
+                StringNode or BytesNode or ConstantNode or PointerNode => Array.Empty<SyntaxNode>(),
+            _ => throw new ArgumentOutOfRangeException(nameof(node), node.GetType(), "Unknown syntax node type."),
+        };
+    }
+
+    private static IReadOnlyList<SyntaxNode> CopyWithHead(
+        SyntaxNode head,
+        IReadOnlyList<SyntaxNode> values)
+    {
+        var result = new SyntaxNode[values.Count + 1];
+        result[0] = head;
+        for (var index = 0; index < values.Count; index++)
+        {
+            result[index + 1] = values[index];
+        }
+
+        return Array.AsReadOnly(result);
+    }
+
+    private static IReadOnlyList<SyntaxNode> CopyWithTail(
+        IReadOnlyList<SyntaxNode> values,
+        SyntaxNode tail)
+    {
+        var result = new SyntaxNode[values.Count + 1];
+        for (var index = 0; index < values.Count; index++)
+        {
+            result[index] = values[index];
+        }
+
+        result[^1] = tail;
+        return Array.AsReadOnly(result);
+    }
+
+    private readonly record struct TraversalFrame(SyntaxNode Node, int Depth, bool Exiting);
 }
 
 /// <summary>Rewrites immutable Expr trees and preserves unchanged node instances.</summary>
