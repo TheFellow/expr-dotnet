@@ -19,7 +19,7 @@ csharp_style_prefer_primary_constructors = true:suggestion
 csharp_style_prefer_switch_expression = true:suggestion
 csharp_style_prefer_pattern_matching = true:suggestion
 csharp_style_prefer_extended_property_pattern = true:suggestion
-csharp_style_prefer_utf8_string_literals = true:suggestion
+csharp_style_prefer_utf8_string_literals = true:error
 
 dotnet_style_qualification_for_event = false:error
 dotnet_style_qualification_for_field = false:error

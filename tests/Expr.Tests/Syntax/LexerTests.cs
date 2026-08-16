@@ -37,7 +37,7 @@ public sealed class LexerTests
         Assert.Equal("hello\nworld", tokens[1].Value);
         Assert.Equal("a`b", tokens[2].Value);
         Assert.Equal(new byte[] { 0, 255 }, tokens[3].BytesValue.ToArray());
-        Assert.Equal(new byte[] { 0xC3, 0xBF }, tokens[4].BytesValue.ToArray());
+        Assert.Equal("ÿ"u8.ToArray(), tokens[4].BytesValue.ToArray());
     }
 
     [Fact]
@@ -121,6 +121,6 @@ public sealed class LexerTests
 
         segment.Array![segment.Offset] = (byte)'z';
 
-        Assert.Equal(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, token.BytesValue.ToArray());
+        Assert.Equal("abc"u8.ToArray(), token.BytesValue.ToArray());
     }
 }

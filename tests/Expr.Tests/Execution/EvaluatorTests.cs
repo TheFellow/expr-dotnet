@@ -85,7 +85,7 @@ public sealed class EvaluatorTests
         Assert.True((bool)Evaluate("98 in b'abc'")!);
 
         var slice = Assert.IsType<ReadOnlyMemory<byte>>(Evaluate("b'abc'[1:]"));
-        Assert.Equal(new byte[] { (byte)'b', (byte)'c' }, slice.ToArray());
+        Assert.Equal("bc"u8.ToArray(), slice.ToArray());
     }
 
     [Fact]

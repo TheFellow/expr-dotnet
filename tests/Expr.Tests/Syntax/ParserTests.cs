@@ -279,7 +279,7 @@ public sealed class ParserTests
 
         segment.Array![segment.Offset] = (byte)'z';
 
-        Assert.Equal(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, node.Value.ToArray());
+        Assert.Equal("abc"u8.ToArray(), node.Value.ToArray());
     }
 
     [Fact]
