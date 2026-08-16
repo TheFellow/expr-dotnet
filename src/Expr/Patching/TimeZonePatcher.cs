@@ -6,15 +6,13 @@ using Expr.Syntax;
 namespace Expr.Patching;
 
 /// <summary>Prepends a configured time zone to <c>date</c> and <c>now</c> built-ins.</summary>
-public sealed class TimeZonePatcher : IExprSemanticPatcher
+/// <remarks>Initializes a time-zone patcher.</remarks>
+/// <param name="timeZone">The default time zone.</param>
+public sealed class TimeZonePatcher(TimeZoneInfo timeZone) : IExprSemanticPatcher
 {
-    /// <summary>Initializes a time-zone patcher.</summary>
-    /// <param name="timeZone">The default time zone.</param>
-    public TimeZonePatcher(TimeZoneInfo timeZone) =>
-        TimeZone = timeZone ?? throw new ArgumentNullException(nameof(timeZone));
 
     /// <summary>Gets the default time zone.</summary>
-    public TimeZoneInfo TimeZone { get; }
+    public TimeZoneInfo TimeZone { get; } = timeZone ?? throw new ArgumentNullException(nameof(timeZone));
 
     /// <inheritdoc />
     public SyntaxNode Apply(SyntaxNode root, ExprSemanticModel model, ExprConfiguration configuration)
