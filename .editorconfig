@@ -23,6 +23,7 @@ csharp_style_prefer_utf8_string_literals = true:error
 csharp_style_prefer_index_operator = true:error
 csharp_style_deconstructed_variable_declaration = true:error
 csharp_style_prefer_local_over_anonymous_function = true:error
+csharp_style_unused_value_assignment_preference = discard_variable:error
 
 dotnet_style_qualification_for_event = false:error
 dotnet_style_qualification_for_field = false:error
