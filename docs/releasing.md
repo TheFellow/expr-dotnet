@@ -34,8 +34,8 @@ a temporary fallback rather than a full-account or non-expiring key.
 Package versions are derived from tags. For example:
 
 ```sh
-git tag -a v0.1.0 -m "Expr 0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "Expr 0.2.0"
+git push origin v0.2.0
 ```
 
 The release workflow validates formatting, builds and tests the solution,
@@ -54,7 +54,7 @@ several minutes. Test the exact published version from a clean project:
 ```sh
 dotnet new console --name ExprSmokeTest
 cd ExprSmokeTest
-dotnet add package Expr --version 0.1.0
+dotnet add package Expr --version 0.2.0
 dotnet restore
 ```
 
