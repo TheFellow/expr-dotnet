@@ -27,7 +27,9 @@ public sealed class SyntaxLexer
     {
         ArgumentNullException.ThrowIfNull(text);
         source = new SourceText(text);
-        runes = [.. text.EnumerateRunes()];
+#pragma warning disable IDE0305 // ToArray avoids collection-builder allocations on this parsing hot path.
+        runes = text.EnumerateRunes().ToArray();
+#pragma warning restore IDE0305
         offsets = BuildOffsets(runes);
         tokens.Clear();
         position = 0;
