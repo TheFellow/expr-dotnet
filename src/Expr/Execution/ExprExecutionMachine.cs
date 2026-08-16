@@ -831,7 +831,7 @@ internal sealed class ExprExecutionMachine
 
     private static int CheckedInt(long value, string name)
     {
-        if (value < int.MinValue || value > int.MaxValue)
+        if (value is < int.MinValue or > int.MaxValue)
         {
             throw Error($"{name} is out of range");
         }

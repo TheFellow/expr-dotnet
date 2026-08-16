@@ -118,7 +118,7 @@ public static class SyntaxPrinter
                     builder.Append("\\v");
                     break;
                 default:
-                    if (character < ' ' || character == '\u007f')
+                    if (character is < ' ' or '\u007f')
                     {
                         builder.Append(CultureInfo.InvariantCulture, $"\\x{(int)character:x2}");
                     }
