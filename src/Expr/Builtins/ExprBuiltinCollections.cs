@@ -123,7 +123,7 @@ internal static class ExprBuiltinCollections
         object? value = arguments[0];
         if (ExprCollections.TryAsArray(value, out IExprArray? array) && array is not null)
         {
-            return array.Count == 0 ? null : array[array.Count - 1];
+            return array.Count == 0 ? null : array[^1];
         }
 
         if (ExprCollections.TryAsMap(value, out IExprMap? map) && map is not null)
