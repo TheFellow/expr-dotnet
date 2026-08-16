@@ -18,8 +18,6 @@ public sealed record ExprProfileSample(
 /// <summary>Contains an evaluation value and its resource-accounting details.</summary>
 public sealed class ExprEvaluationResult
 {
-    private readonly IReadOnlyList<ExprProfileSample> profile;
-
     internal ExprEvaluationResult(
         object? value,
         ulong memoryUsed,
@@ -29,7 +27,7 @@ public sealed class ExprEvaluationResult
         Value = value;
         MemoryUsed = memoryUsed;
         WorkUsed = workUsed;
-        this.profile = new ReadOnlyCollection<ExprProfileSample>(profile.ToArray());
+        Profile = new ReadOnlyCollection<ExprProfileSample>(profile.ToArray());
     }
 
     /// <summary>Gets the expression result.</summary>
@@ -42,5 +40,5 @@ public sealed class ExprEvaluationResult
     public ulong WorkUsed { get; }
 
     /// <summary>Gets completed profile measurements in program point order.</summary>
-    public IReadOnlyList<ExprProfileSample> Profile => profile;
+    public IReadOnlyList<ExprProfileSample> Profile { get; }
 }

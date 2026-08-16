@@ -13,7 +13,6 @@ namespace Expr.Compilation;
 /// <summary>Describes a member selected by static checking.</summary>
 public sealed class ExprMemberOperand
 {
-    private readonly IReadOnlyList<string> path;
 
     /// <summary>Initializes a statically bound member operand.</summary>
     /// <param name="name">The expression-visible name.</param>
@@ -33,7 +32,7 @@ public sealed class ExprMemberOperand
         Kind = kind;
         Member = member;
         EnvironmentMember = environmentMember;
-        this.path = new ReadOnlyCollection<string>((path ?? [name]).ToArray());
+        Path = new ReadOnlyCollection<string>((path ?? [name]).ToArray());
     }
 
     /// <summary>Gets the expression-visible member name.</summary>
@@ -49,10 +48,10 @@ public sealed class ExprMemberOperand
     public ExprEnvironmentMember? EnvironmentMember { get; }
 
     /// <summary>Gets the member path from the access root.</summary>
-    public IReadOnlyList<string> Path => path;
+    public IReadOnlyList<string> Path { get; }
 
     /// <inheritdoc />
-    public override string ToString() => string.Join('.', path);
+    public override string ToString() => string.Join('.', Path);
 }
 
 /// <summary>Contains a constant regular expression compiled with explicit safety limits.</summary>
