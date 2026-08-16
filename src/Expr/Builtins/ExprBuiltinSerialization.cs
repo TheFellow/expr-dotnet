@@ -324,7 +324,7 @@ internal static class ExprBuiltinSerialization
         }
 
         work.Push(JsonFrame.TextValue(string.Concat("\n", Indent(depth), "}")));
-        KeyValuePair<string, object?>[] entries = map.ToArray();
+        KeyValuePair<string, object?>[] entries = [.. map];
         for (int index = entries.Length - 1; index >= 0; index--)
         {
             if (index < entries.Length - 1)

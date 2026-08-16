@@ -30,9 +30,7 @@ public sealed class GeneratedCorpusTests
             "generated.txt");
         Assert.Equal(ExpectedSha256, ComputeSha256(corpusPath));
 
-        string[] expressions = File.ReadLines(corpusPath)
-            .Where(static line => !string.IsNullOrWhiteSpace(line))
-            .ToArray();
+        string[] expressions = [.. File.ReadLines(corpusPath).Where(static line => !string.IsNullOrWhiteSpace(line))];
         Assert.Equal(ExpectedExpressionCount, expressions.Length);
 
         Dictionary<string, object?> environment = CreateEnvironment();

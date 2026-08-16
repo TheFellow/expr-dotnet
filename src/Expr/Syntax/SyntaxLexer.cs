@@ -27,7 +27,7 @@ public sealed class SyntaxLexer
     {
         ArgumentNullException.ThrowIfNull(text);
         source = new SourceText(text);
-        runes = text.EnumerateRunes().ToArray();
+        runes = [.. text.EnumerateRunes()];
         offsets = BuildOffsets(runes);
         tokens.Clear();
         position = 0;

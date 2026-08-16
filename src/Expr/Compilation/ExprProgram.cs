@@ -47,7 +47,7 @@ public sealed class ExprProgram
         ArgumentNullException.ThrowIfNull(functions);
         ArgumentOutOfRangeException.ThrowIfNegative(variableCount);
 
-        ExprInstruction[] instructionArray = instructions.ToArray();
+        ExprInstruction[] instructionArray = [.. instructions];
         this.instructions = Array.AsReadOnly(instructionArray);
         bytecode = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Opcode).ToArray());
         arguments = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Argument).ToArray());
@@ -205,7 +205,7 @@ public sealed class ExprProgram
 
     private static object? SnapshotConstant(object? value) => value switch
     {
-        byte[] bytes => new ReadOnlyMemory<byte>(bytes.ToArray()),
+        byte[] bytes => new ReadOnlyMemory<byte>([.. bytes]),
         ReadOnlyMemory<byte> bytes => new ReadOnlyMemory<byte>(bytes.ToArray()),
         _ => value,
     };

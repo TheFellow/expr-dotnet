@@ -353,7 +353,7 @@ internal static class ExprBuiltinCollections
             return Result(ExprNilArray.Instance, 0);
         }
 
-        object?[] values = array.ToArray();
+        object?[] values = [.. array];
         SortValues(values, descending);
         return Result(new ExprArray(values), values.Length);
     }

@@ -94,6 +94,6 @@ public sealed class BuiltinPredicateTests
     private object? Invoke(string name, object? collection, ExprBuiltinPredicateContext context) =>
         library.InvokePredicate(name, collection, context).Value;
 
-    private static object?[] Items(object? value) => Assert.IsAssignableFrom<IExprArray>(value).ToArray();
+    private static object?[] Items(object? value) => [.. Assert.IsAssignableFrom<IExprArray>(value)];
 }
 #pragma warning restore CA1861

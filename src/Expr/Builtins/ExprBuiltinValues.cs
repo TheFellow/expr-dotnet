@@ -326,7 +326,7 @@ internal static class ExprBuiltinValues
             return;
         }
 
-        List<KeyValuePair<object?, object?>> entries = map.ToList();
+        List<KeyValuePair<object?, object?>> entries = [.. map];
         entries.Sort(static (left, right) => string.CompareOrdinal(
             StableMapKey(left.Key),
             StableMapKey(right.Key)));

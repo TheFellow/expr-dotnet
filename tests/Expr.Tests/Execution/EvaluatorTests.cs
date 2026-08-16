@@ -128,11 +128,10 @@ public sealed class EvaluatorTests
     {
         ExprProgram program = ExecutionTestCompiler.Compile("map(1..100, # * 2)");
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
-        Task<object?>[] calls = Enumerable.Range(0, 64)
+        Task<object?>[] calls = [.. Enumerable.Range(0, 64)
             .Select(_ => Task.Run(
                 () => ExprEvaluator.Shared.Evaluate(program, cancellationToken: cancellationToken),
-                cancellationToken))
-            .ToArray();
+                cancellationToken))];
 
         object?[] results = await Task.WhenAll(calls);
 

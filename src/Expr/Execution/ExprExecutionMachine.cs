@@ -694,7 +694,7 @@ internal sealed class ExprExecutionMachine
         }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(active.StartTimestamp);
-        profiles ??= new Dictionary<int, MutableProfile>();
+        profiles ??= [];
         if (!profiles.TryGetValue(point.Id, out MutableProfile? profile))
         {
             profile = new MutableProfile(point);

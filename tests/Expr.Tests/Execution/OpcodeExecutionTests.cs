@@ -196,7 +196,7 @@ public sealed class OpcodeExecutionTests
 
     private static ExprFunction Function(string name, int arity)
     {
-        ExprTypeDescriptor[] parameters = Enumerable.Repeat<ExprTypeDescriptor>(ExprTypes.Integer, arity).ToArray();
+        ExprTypeDescriptor[] parameters = [.. Enumerable.Repeat<ExprTypeDescriptor>(ExprTypes.Integer, arity)];
         return new ExprFunction(
             name,
             [new ExprFunctionOverload(parameters, ExprTypes.Integer)],

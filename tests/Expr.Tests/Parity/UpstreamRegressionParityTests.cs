@@ -46,7 +46,7 @@ public sealed class UpstreamRegressionParityTests
 
         if (expected is object?[] expectedArray)
         {
-            Assert.Equal(expectedArray, Assert.IsAssignableFrom<IExprArray>(actual).ToArray());
+            Assert.Equal(expectedArray, [.. Assert.IsAssignableFrom<IExprArray>(actual)]);
         }
         else if (expected is long expectedInteger && actual is not null)
         {

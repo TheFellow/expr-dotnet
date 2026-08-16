@@ -20,7 +20,7 @@ public sealed class OperatorOverridePatcher : IExprSemanticPatcher
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operatorName);
         ArgumentNullException.ThrowIfNull(functionNames);
-        string[] names = functionNames.ToArray();
+        string[] names = [.. functionNames];
         if (names.Length is 0 || names.Any(string.IsNullOrWhiteSpace))
         {
             throw new ArgumentException("At least one non-empty function name is required.", nameof(functionNames));

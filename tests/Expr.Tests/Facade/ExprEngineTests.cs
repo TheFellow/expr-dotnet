@@ -147,9 +147,7 @@ public sealed class ExprEngineTests
     {
         CompiledExpression expression = ExprEngine.Compile("sum(1..100)");
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
-        Task<object?>[] evaluations = Enumerable.Range(0, 32)
-            .Select(_ => Task.Run(() => expression.Run(cancellationToken: cancellationToken), cancellationToken))
-            .ToArray();
+        Task<object?>[] evaluations = [.. Enumerable.Range(0, 32).Select(_ => Task.Run(() => expression.Run(cancellationToken: cancellationToken), cancellationToken))];
 
         object?[] values = await Task.WhenAll(evaluations);
 

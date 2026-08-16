@@ -108,12 +108,11 @@ public sealed class ExprEnvironmentSchema
     public static ExprEnvironmentSchema FromDictionary(IReadOnlyDictionary<string, object?> environment)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        ExprEnvironmentMember[] dictionaryMembers = environment.Select(pair =>
+        ExprEnvironmentMember[] dictionaryMembers = [.. environment.Select(pair =>
             new ExprEnvironmentMember(
                 pair.Key,
                 pair.Value is null ? ExprTypes.Nil : ExprTypes.FromClrType(pair.Value.GetType()),
-                instance => ((IReadOnlyDictionary<string, object?>)instance)[pair.Key]))
-            .ToArray();
+                instance => ((IReadOnlyDictionary<string, object?>)instance)[pair.Key]))];
         return new ExprEnvironmentSchema(environment.GetType(), dictionaryMembers, true);
     }
 

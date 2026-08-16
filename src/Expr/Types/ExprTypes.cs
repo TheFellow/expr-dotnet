@@ -188,9 +188,7 @@ public static class ExprTypes
     {
         System.Reflection.MethodInfo invoke = type.GetMethod("Invoke") ??
             throw new ArgumentException("The delegate type has no Invoke method.", nameof(type));
-        ExprTypeDescriptor[] parameters = invoke.GetParameters()
-            .Select(static parameter => FromClrType(parameter.ParameterType))
-            .ToArray();
+        ExprTypeDescriptor[] parameters = [.. invoke.GetParameters().Select(static parameter => FromClrType(parameter.ParameterType))];
         ExprTypeDescriptor result = invoke.ReturnType == typeof(void) ? Nil : FromClrType(invoke.ReturnType);
         return new FunctionTypeDescriptor(parameters, result);
     }

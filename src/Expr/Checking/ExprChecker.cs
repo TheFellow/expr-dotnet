@@ -493,7 +493,7 @@ public sealed class ExprChecker
             return ExprTypes.Any;
         }
 
-        ExprTypeDescriptor[] argumentTypes = node.Arguments.Select(Visit).ToArray();
+        ExprTypeDescriptor[] argumentTypes = [.. node.Arguments.Select(Visit)];
 
         if (calleeSemantics?.Function is ExprFunction function)
         {
@@ -739,7 +739,7 @@ public sealed class ExprChecker
 
     private ExprTypeDescriptor CheckDeclaredBuiltin(BuiltinNode node, ExprTypeDescriptor? fallback)
     {
-        ExprTypeDescriptor[] arguments = node.Arguments.Select(Visit).ToArray();
+        ExprTypeDescriptor[] arguments = [.. node.Arguments.Select(Visit)];
         if (!configuration.DisabledBuiltins.Contains(node.Name) &&
             configuration.Builtins.TryGetValue(node.Name, out ExprFunction? function))
         {
@@ -1245,12 +1245,11 @@ public sealed class ExprChecker
     private static ExprFunctionOverload MethodOverload(MethodInfo method)
     {
         ParameterInfo[] parameters = method.GetParameters();
-        ExprTypeDescriptor[] types = parameters
+        ExprTypeDescriptor[] types = [.. parameters
             .Select(static parameter => ExprTypes.FromClrType(parameter.ParameterType.IsArray &&
                 parameter.GetCustomAttribute<ParamArrayAttribute>() is not null
                     ? parameter.ParameterType.GetElementType()!
-                    : parameter.ParameterType))
-            .ToArray();
+                    : parameter.ParameterType))];
         bool variadic = parameters.LastOrDefault()?.GetCustomAttribute<ParamArrayAttribute>() is not null;
         ExprTypeDescriptor result = method.ReturnType == typeof(void)
             ? ExprTypes.Nil
