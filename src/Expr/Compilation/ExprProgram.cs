@@ -12,15 +12,6 @@ namespace Expr.Compilation;
 /// <summary>Contains immutable bytecode produced from a checked Expr syntax tree.</summary>
 public sealed class ExprProgram
 {
-    private readonly IReadOnlyList<ExprInstruction> instructions;
-    private readonly IReadOnlyList<ExprOpcode> bytecode;
-    private readonly IReadOnlyList<int> arguments;
-    private readonly IReadOnlyList<SourceLocation> locations;
-    private readonly IReadOnlyList<object?> constants;
-    private readonly IReadOnlyList<ExprFunction> functions;
-    private readonly IReadOnlyList<ExprProfilePoint> profilePoints;
-    private readonly IReadOnlyDictionary<int, string> variableNames;
-    private readonly IReadOnlyDictionary<int, string> functionNames;
 
     /// <summary>Initializes a program from an instruction stream and its immutable metadata.</summary>
     /// <param name="syntaxTree">The checked source syntax.</param>
@@ -47,18 +38,18 @@ public sealed class ExprProgram
         ArgumentNullException.ThrowIfNull(functions);
         ArgumentOutOfRangeException.ThrowIfNegative(variableCount);
 
-        ExprInstruction[] instructionArray = instructions.ToArray();
-        this.instructions = Array.AsReadOnly(instructionArray);
-        bytecode = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Opcode).ToArray());
-        arguments = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Argument).ToArray());
-        locations = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Location).ToArray());
-        this.constants = Array.AsReadOnly(constants.Select(SnapshotConstant).ToArray());
-        this.functions = Array.AsReadOnly(functions.ToArray());
-        this.profilePoints = Array.AsReadOnly((profilePoints ?? []).ToArray());
+        ExprInstruction[] instructionArray = [.. instructions];
+        Instructions = Array.AsReadOnly(instructionArray);
+        Bytecode = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Opcode).ToArray());
+        Arguments = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Argument).ToArray());
+        Locations = Array.AsReadOnly(instructionArray.Select(static instruction => instruction.Location).ToArray());
+        Constants = Array.AsReadOnly(constants.Select(SnapshotConstant).ToArray());
+        Functions = Array.AsReadOnly(functions.ToArray());
+        ProfilePoints = Array.AsReadOnly((profilePoints ?? []).ToArray());
         VariableCount = variableCount;
-        this.variableNames = new ReadOnlyDictionary<int, string>(
+        VariableNames = new ReadOnlyDictionary<int, string>(
             variableNames is null ? [] : new Dictionary<int, string>(variableNames));
-        this.functionNames = new ReadOnlyDictionary<int, string>(
+        FunctionNames = new ReadOnlyDictionary<int, string>(
             functionNames is null ? [] : new Dictionary<int, string>(functionNames));
     }
 
@@ -72,34 +63,34 @@ public sealed class ExprProgram
     public SyntaxNode Root => SyntaxTree.Root;
 
     /// <summary>Gets instructions with arguments and source locations.</summary>
-    public IReadOnlyList<ExprInstruction> Instructions => instructions;
+    public IReadOnlyList<ExprInstruction> Instructions { get; }
 
     /// <summary>Gets opcodes in instruction order.</summary>
-    public IReadOnlyList<ExprOpcode> Bytecode => bytecode;
+    public IReadOnlyList<ExprOpcode> Bytecode { get; }
 
     /// <summary>Gets opcode arguments in instruction order.</summary>
-    public IReadOnlyList<int> Arguments => arguments;
+    public IReadOnlyList<int> Arguments { get; }
 
     /// <summary>Gets source ranges in instruction order.</summary>
-    public IReadOnlyList<SourceLocation> Locations => locations;
+    public IReadOnlyList<SourceLocation> Locations { get; }
 
     /// <summary>Gets the immutable constant table.</summary>
-    public IReadOnlyList<object?> Constants => constants;
+    public IReadOnlyList<object?> Constants { get; }
 
     /// <summary>Gets known functions referenced by bytecode.</summary>
-    public IReadOnlyList<ExprFunction> Functions => functions;
+    public IReadOnlyList<ExprFunction> Functions { get; }
 
     /// <summary>Gets profiling points referenced by profile boundary instructions.</summary>
-    public IReadOnlyList<ExprProfilePoint> ProfilePoints => profilePoints;
+    public IReadOnlyList<ExprProfilePoint> ProfilePoints { get; }
 
     /// <summary>Gets the number of local-variable slots required by the program.</summary>
     public int VariableCount { get; }
 
     /// <summary>Gets local-variable debug names by slot.</summary>
-    public IReadOnlyDictionary<int, string> VariableNames => variableNames;
+    public IReadOnlyDictionary<int, string> VariableNames { get; }
 
     /// <summary>Gets known-function debug names by table index.</summary>
-    public IReadOnlyDictionary<int, string> FunctionNames => functionNames;
+    public IReadOnlyDictionary<int, string> FunctionNames { get; }
 
     /// <summary>Returns a stable, human-readable bytecode listing.</summary>
     /// <returns>The disassembled program.</returns>
@@ -115,9 +106,9 @@ public sealed class ExprProgram
     public void Disassemble(TextWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        for (var index = 0; index < instructions.Count; index++)
+        for (var index = 0; index < Instructions.Count; index++)
         {
-            ExprInstruction instruction = instructions[index];
+            ExprInstruction instruction = Instructions[index];
             writer.Write(index.ToString(CultureInfo.InvariantCulture));
             writer.Write("\t");
             writer.Write(instruction.Opcode);
@@ -145,7 +136,7 @@ public sealed class ExprProgram
                 return;
             case ExprOpcode.OpStore:
             case ExprOpcode.OpLoadVar:
-                WriteIndexed(writer, argument, variableNames.GetValueOrDefault(argument));
+                WriteIndexed(writer, argument, VariableNames.GetValueOrDefault(argument));
                 return;
             case ExprOpcode.OpLoadFunc:
             case ExprOpcode.OpCall0:
@@ -153,7 +144,7 @@ public sealed class ExprProgram
             case ExprOpcode.OpCall2:
             case ExprOpcode.OpCall3:
             case ExprOpcode.OpCallBuiltin1:
-                WriteIndexed(writer, argument, functionNames.GetValueOrDefault(argument));
+                WriteIndexed(writer, argument, FunctionNames.GetValueOrDefault(argument));
                 return;
             case ExprOpcode.OpJump:
             case ExprOpcode.OpJumpIfTrue:
@@ -195,17 +186,17 @@ public sealed class ExprProgram
 
     private string ConstantDisplay(int index)
     {
-        if ((uint)index >= (uint)constants.Count)
+        if ((uint)index >= (uint)Constants.Count)
         {
             return "out of range";
         }
 
-        return ExprDisplay.Value(constants[index]);
+        return ExprDisplay.Value(Constants[index]);
     }
 
     private static object? SnapshotConstant(object? value) => value switch
     {
-        byte[] bytes => new ReadOnlyMemory<byte>(bytes.ToArray()),
+        byte[] bytes => new ReadOnlyMemory<byte>([.. bytes]),
         ReadOnlyMemory<byte> bytes => new ReadOnlyMemory<byte>(bytes.ToArray()),
         _ => value,
     };

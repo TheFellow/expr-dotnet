@@ -30,8 +30,8 @@ public sealed class BuiltinCollectionTests
     [Fact]
     public void Aggregate_rejects_non_numeric_nested_values()
     {
-        Assert.Throws<ExprRuntimeException>(() => Invoke("max", new object?[] { 1L, "2" }));
-        Assert.Throws<ExprRuntimeException>(() => Invoke("mean", new object?[] { 1L, true }));
+        Assert.Throws<ExprRuntimeException>(() => Invoke("max", [1L, "2"]));
+        Assert.Throws<ExprRuntimeException>(() => Invoke("mean", [1L, true]));
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public sealed class BuiltinCollectionTests
 
     private object? Invoke(string name, params object?[] arguments) => library.Get(name).Invoke(arguments).Value;
 
-    private static object?[] Values(object? value) => Assert.IsAssignableFrom<IExprArray>(value).ToArray();
+    private static object?[] Values(object? value) => [.. Assert.IsAssignableFrom<IExprArray>(value)];
 
     private sealed class MemberFixture
     {

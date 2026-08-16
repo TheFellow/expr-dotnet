@@ -472,24 +472,22 @@ public static class ExprCollections
     private sealed class DictionaryAdapter : IExprMap
     {
         private readonly IDictionary dictionary;
-        private readonly Type keyType;
-        private readonly Type valueType;
 
         internal DictionaryAdapter(IDictionary dictionary)
         {
             this.dictionary = dictionary;
-            (keyType, valueType) = GetDictionaryTypes(dictionary.GetType());
+            (KeyType, ValueType) = GetDictionaryTypes(dictionary.GetType());
         }
 
-        public Type KeyType => keyType;
+        public Type KeyType { get; }
 
-        public Type ValueType => valueType;
+        public Type ValueType { get; }
 
         public int Count => dictionary.Count;
 
         public bool TryGetValue(object? key, out object? value)
         {
-            if (key is long integer && TryConvertIntegerKey(integer, keyType, out object? converted))
+            if (key is long integer && TryConvertIntegerKey(integer, KeyType, out object? converted))
             {
                 key = converted;
             }

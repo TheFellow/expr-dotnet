@@ -63,17 +63,21 @@ The .NET conformance tests execute every checked-in request through the public
 and independently prove that optimized and unoptimized execution agree wherever
 the case does not explicitly select an optimization mode.
 
-## Initial inventory and expansion
+## Coverage and traceability
 
-The first corpus contains 137 cases: 125 successes and 12 expected failures.
+The differential corpus contains 137 cases: 125 successes and 12 expected failures.
 It spans literals, precedence and control flow, JSON-compatible host
 environments, access and slicing, predicates, portable configuration, and all
 71 built-ins registered by the pinned revision (with `bitnot` also exercised as
 a nested call). Cases point back to the upstream test that motivated them.
 
-Expansion is measured by adding an inventory that maps every named upstream
-test to at least one corpus case, a host-specific .NET fixture, or a reviewed
-platform-difference entry. That inventory now lives at
-`inventory/upstream-tests.json`; its 112 `gap` entries are concrete remaining
-work, not covered claims. Time-dependent `now()` is compile-only here; runtime
-clock behavior belongs in an injected-clock test fixture.
+The corpus is one part of the broader parity evidence. The inventory at
+`inventory/upstream-tests.json` maps every named upstream test, example,
+benchmark, and fuzz entry point to a differential case, focused .NET test,
+benchmark, reviewed platform mapping, or embedded Go support package. The
+current pinned inventory covers all 687 entry points with zero explicit gaps;
+CI and release builds enforce that state with `--require-no-gaps`.
+
+See `docs/upstream-test-traceability.md` for the disposition counts and the
+reviewed .NET mappings. Time-dependent `now()` is compile-only in the
+differential corpus; its runtime behavior is covered by the .NET time tests.

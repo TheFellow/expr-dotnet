@@ -84,8 +84,8 @@ public sealed class SyntaxPrinterTests
         { "if true { 1 } else if false { 2 } else { 3 }", "if true { 1 } else if false { 2 } else { 3 }" },
     };
 
-    public static TheoryData<string> RoundTripCases => new()
-    {
+    public static TheoryData<string> RoundTripCases =>
+    [
         "nil",
         "identifier",
         "42",
@@ -104,7 +104,7 @@ public sealed class SyntaxPrinterTests
         "let value = 1; value + 2; value",
         "if ready { [1, 2] } else { {result: nil} }",
         "{(prefix + suffix): fn()}",
-    };
+    ];
 
     [Theory]
     [MemberData(nameof(UpstreamPrintCases))]

@@ -181,7 +181,7 @@ internal static class ExprProgramValidator
             case ExprOpcode.OpCallFast:
             case ExprOpcode.OpCallSafe:
             case ExprOpcode.OpCallTyped:
-                if (argument < 0 || argument > MaximumCallArguments)
+                if (argument is < 0 or > MaximumCallArguments)
                 {
                     Fail(program, index, instruction.Location, "call argument count is out of range");
                 }

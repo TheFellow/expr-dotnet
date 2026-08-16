@@ -33,7 +33,7 @@ internal static class BenchmarkFixtures
 
     private static PolicyEnvironment CreateEnvironment()
     {
-        long[] values = Enumerable.Range(1, 1_000).Select(static value => (long)value).ToArray();
+        long[] values = [.. Enumerable.Range(1, 1_000).Select(static value => (long)value)];
         var labels = new ExprMap(
         [
             new KeyValuePair<object?, object?>("region", "west"),

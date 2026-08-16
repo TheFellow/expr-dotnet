@@ -118,7 +118,7 @@ public sealed class ExprFunction
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(overloads);
-        ExprFunctionOverload[] overloadSnapshot = overloads.ToArray();
+        ExprFunctionOverload[] overloadSnapshot = [.. overloads];
         if (overloadSnapshot.Length is 0 && typeValidator is null)
         {
             throw new ArgumentException("At least one overload or a type validator is required.", nameof(overloads));

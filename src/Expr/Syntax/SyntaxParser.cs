@@ -748,7 +748,6 @@ public sealed class SyntaxParser
             if (postfix.Value == "[")
             {
                 Advance();
-                SyntaxNode? from = null;
                 SyntaxNode? to = null;
                 if (Current.Is(TokenKind.Operator, ":"))
                 {
@@ -763,7 +762,7 @@ public sealed class SyntaxParser
                     continue;
                 }
 
-                from = ParseExpression(0);
+                SyntaxNode? from = ParseExpression(0);
                 if (Current.Is(TokenKind.Operator, ":"))
                 {
                     Advance();

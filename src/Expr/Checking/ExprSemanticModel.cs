@@ -50,8 +50,6 @@ public sealed record ExprNodeSemantics(
 /// <summary>Provides immutable, reference-identity semantic annotations over an immutable syntax tree.</summary>
 public sealed class ExprSemanticModel
 {
-    private readonly IReadOnlyDictionary<SyntaxNode, ExprNodeSemantics> annotations;
-
     internal ExprSemanticModel(
         SyntaxTree syntaxTree,
         IReadOnlyDictionary<SyntaxNode, ExprNodeSemantics> annotations)
@@ -63,7 +61,7 @@ public sealed class ExprSemanticModel
             copy.Add(node, semantics);
         }
 
-        this.annotations = new ReadOnlyDictionary<SyntaxNode, ExprNodeSemantics>(copy);
+        Annotations = new ReadOnlyDictionary<SyntaxNode, ExprNodeSemantics>(copy);
         ResultType = GetType(syntaxTree.Root);
     }
 
@@ -74,7 +72,7 @@ public sealed class ExprSemanticModel
     public ExprTypeDescriptor ResultType { get; }
 
     /// <summary>Gets all semantic annotations keyed by syntax-node identity.</summary>
-    public IReadOnlyDictionary<SyntaxNode, ExprNodeSemantics> Annotations => annotations;
+    public IReadOnlyDictionary<SyntaxNode, ExprNodeSemantics> Annotations { get; }
 
     /// <summary>Gets the inferred type of a node.</summary>
     /// <param name="node">A node in <see cref="SyntaxTree"/>.</param>
@@ -83,7 +81,7 @@ public sealed class ExprSemanticModel
     public ExprTypeDescriptor GetType(SyntaxNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        if (!annotations.TryGetValue(node, out ExprNodeSemantics? semantics))
+        if (!Annotations.TryGetValue(node, out ExprNodeSemantics? semantics))
         {
             throw new ArgumentException("The syntax node does not belong to this semantic model.", nameof(node));
         }
@@ -98,6 +96,6 @@ public sealed class ExprSemanticModel
     public bool TryGetSemantics(SyntaxNode node, out ExprNodeSemantics? semantics)
     {
         ArgumentNullException.ThrowIfNull(node);
-        return annotations.TryGetValue(node, out semantics);
+        return Annotations.TryGetValue(node, out semantics);
     }
 }

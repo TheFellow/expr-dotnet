@@ -759,7 +759,7 @@ public static class ExprCompiler
         {
             CompilePredicateSource(node);
             var loopBreak = 0;
-            Action body = () =>
+            void CompileBody()
             {
                 CompileValue(node.Arguments[1]);
                 int noMatch = Emit(node, ExprOpcode.OpJumpIfFalse, JumpPlaceholder);
@@ -780,14 +780,14 @@ public static class ExprCompiler
                 loopBreak = Emit(node, ExprOpcode.OpJump, JumpPlaceholder);
                 PatchJump(noMatch);
                 Emit(node, ExprOpcode.OpPop);
-            };
+            }
             if (backwards)
             {
-                EmitLoopBackwards(node, body);
+                EmitLoopBackwards(node, CompileBody);
             }
             else
             {
-                EmitLoop(node, body);
+                EmitLoop(node, CompileBody);
             }
 
             if (!indexOnly && node.Throws)

@@ -502,10 +502,7 @@ public abstract class SyntaxRewriter
                 }
             }
 
-            if (replacements is not null)
-            {
-                replacements[index] = replacement;
-            }
+            replacements?[index] = replacement;
         }
 
         return replacements is null ? nodes : SyntaxCollections.Copy(replacements);
@@ -526,10 +523,7 @@ public abstract class SyntaxRewriter
                 }
             }
 
-            if (replacements is not null)
-            {
-                replacements[index] = replacement;
-            }
+            replacements?[index] = replacement;
         }
 
         return replacements is null ? nodes : SyntaxCollections.Copy(replacements);

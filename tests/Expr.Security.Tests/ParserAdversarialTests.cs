@@ -11,8 +11,8 @@ namespace Expr.Security.Tests;
 
 public sealed class ParserAdversarialTests
 {
-    public static TheoryData<string> MalformedSources => new()
-    {
+    public static TheoryData<string> MalformedSources =>
+    [
         "'\\uD800'",
         "'\\U00110000'",
         "'\\u{}'",
@@ -21,15 +21,15 @@ public sealed class ParserAdversarialTests
         "1e999999",
         "0xFFFFFFFFFFFFFFFFF",
         "/* unterminated",
-    };
+    ];
 
-    public static TheoryData<string> OversizedSources => new()
-    {
+    public static TheoryData<string> OversizedSources =>
+    [
         new string(' ', 65),
         string.Concat("/*", new string('x', 65), "*/"),
         new string('a', 65),
         string.Concat("'", new string('x', 65), "'"),
-    };
+    ];
 
     [Theory]
     [MemberData(nameof(OversizedSources))]

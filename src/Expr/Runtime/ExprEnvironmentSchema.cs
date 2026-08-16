@@ -51,8 +51,6 @@ public sealed class ExprEnvironmentSchema
         .GetMethod(nameof(CreatePropertyAccessorCore), BindingFlags.NonPublic | BindingFlags.Static) ??
         throw new InvalidOperationException("The property accessor factory is unavailable.");
 
-    private readonly IReadOnlyDictionary<string, ExprEnvironmentMember> members;
-
     internal ExprEnvironmentSchema(Type environmentType, IEnumerable<ExprEnvironmentMember> members, bool isStrict)
     {
         EnvironmentType = environmentType;
@@ -63,14 +61,14 @@ public sealed class ExprEnvironmentSchema
             copy.Add(member.Name, member);
         }
 
-        this.members = new ReadOnlyDictionary<string, ExprEnvironmentMember>(copy);
+        Members = new ReadOnlyDictionary<string, ExprEnvironmentMember>(copy);
     }
 
     /// <summary>Gets the CLR environment type.</summary>
     public Type EnvironmentType { get; }
 
     /// <summary>Gets the expression-visible members.</summary>
-    public IReadOnlyDictionary<string, ExprEnvironmentMember> Members => members;
+    public IReadOnlyDictionary<string, ExprEnvironmentMember> Members { get; }
 
     /// <summary>Gets a value indicating whether unknown names are rejected.</summary>
     public bool IsStrict { get; }
@@ -108,12 +106,11 @@ public sealed class ExprEnvironmentSchema
     public static ExprEnvironmentSchema FromDictionary(IReadOnlyDictionary<string, object?> environment)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        ExprEnvironmentMember[] dictionaryMembers = environment.Select(pair =>
+        ExprEnvironmentMember[] dictionaryMembers = [.. environment.Select(pair =>
             new ExprEnvironmentMember(
                 pair.Key,
                 pair.Value is null ? ExprTypes.Nil : ExprTypes.FromClrType(pair.Value.GetType()),
-                instance => ((IReadOnlyDictionary<string, object?>)instance)[pair.Key]))
-            .ToArray();
+                instance => ((IReadOnlyDictionary<string, object?>)instance)[pair.Key]))];
         return new ExprEnvironmentSchema(environment.GetType(), dictionaryMembers, true);
     }
 
@@ -124,7 +121,7 @@ public sealed class ExprEnvironmentSchema
     public bool TryGetMember(string name, out ExprEnvironmentMember? member)
     {
         ArgumentNullException.ThrowIfNull(name);
-        return members.TryGetValue(name, out member);
+        return Members.TryGetValue(name, out member);
     }
 
     /// <summary>Reads a named member from an environment without performing reflection lookup.</summary>
@@ -142,7 +139,7 @@ public sealed class ExprEnvironmentSchema
                 $"environment type {environment.GetType().FullName} is not assignable to {EnvironmentType.FullName}");
         }
 
-        if (!members.TryGetValue(name, out ExprEnvironmentMember? member))
+        if (!Members.TryGetValue(name, out ExprEnvironmentMember? member))
         {
             throw new ExprRuntimeException($"unknown name {name}");
         }

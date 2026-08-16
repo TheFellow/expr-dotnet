@@ -27,7 +27,7 @@ public sealed class SyntaxLexer
     {
         ArgumentNullException.ThrowIfNull(text);
         source = new SourceText(text);
-        runes = text.EnumerateRunes().ToArray();
+        runes = [.. text.EnumerateRunes()];
         offsets = BuildOffsets(runes);
         tokens.Clear();
         position = 0;
@@ -80,8 +80,8 @@ public sealed class SyntaxLexer
         {
             var quote = Advance();
             ScanQuoted(quote);
-            var decoded = Unescape(Raw()[1..], bytes: true);
-            Emit(TokenKind.Bytes, Encoding.Latin1.GetString(decoded.Bytes), decoded.Bytes);
+            var (_, bytes) = Unescape(Raw()[1..], bytes: true);
+            Emit(TokenKind.Bytes, Encoding.Latin1.GetString(bytes), bytes);
             return;
         }
 

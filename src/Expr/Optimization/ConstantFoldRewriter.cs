@@ -107,14 +107,14 @@ internal sealed class ConstantFoldRewriter(int maximumDepth) : OptimizationRewri
             return node;
         }
 
-        object?[] values = node.Elements.Select(static element => element switch
+        object?[] values = [.. node.Elements.Select(static element => element switch
         {
             IntegerNode integer => (object)integer.Value,
             FloatNode number => number.Value,
             StringNode text => text.Value,
             BooleanNode boolean => boolean.Value,
             _ => throw new InvalidOperationException("The scalar literal set is exhaustive."),
-        }).ToArray();
+        })];
         return Replace(node, new ConstantNode(new ReadOnlyCollection<object?>(values), node.Location));
     }
 

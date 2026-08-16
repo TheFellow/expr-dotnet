@@ -238,7 +238,7 @@ internal static class ExprBuiltinDefinitions
 
     private static ExprTypeDescriptor ValidateDate(ReadOnlySpan<ExprTypeDescriptor> arguments)
     {
-        if (arguments.Length < 1 || arguments.Length > 4)
+        if (arguments.Length is < 1 or > 4)
         {
             throw new ExprRuntimeException(
                 $"invalid number of arguments (expected between 1 and 4, got {arguments.Length})");

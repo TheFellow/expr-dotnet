@@ -176,7 +176,7 @@ public sealed class CompilerTests
         Assert.Equal(
             [ExprOpcode.OpPush, ExprOpcode.OpLoadField, ExprOpcode.OpMethod, ExprOpcode.OpCallTyped],
             program.Bytecode);
-        ExprMemberOperand[] members = program.Constants.OfType<ExprMemberOperand>().ToArray();
+        ExprMemberOperand[] members = [.. program.Constants.OfType<ExprMemberOperand>()];
         Assert.Equal(2, members.Length);
         Assert.Equal(ExprMemberBindingKind.Environment, members[0].Kind);
         Assert.NotNull(members[0].EnvironmentMember);
@@ -252,7 +252,7 @@ public sealed class CompilerTests
 
     private static ExprFunction Function(string name, int arity)
     {
-        ExprTypeDescriptor[] parameters = Enumerable.Repeat<ExprTypeDescriptor>(ExprTypes.Integer, arity).ToArray();
+        ExprTypeDescriptor[] parameters = [.. Enumerable.Repeat<ExprTypeDescriptor>(ExprTypes.Integer, arity)];
         return new ExprFunction(
             name,
             [new ExprFunctionOverload(parameters, ExprTypes.Integer)],

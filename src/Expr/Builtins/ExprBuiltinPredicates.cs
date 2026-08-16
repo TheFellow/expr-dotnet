@@ -289,14 +289,9 @@ internal static class ExprBuiltinPredicates
 
     private static ExprInvocationResult Result(object? value, long cost) => new(value, checked((ulong)cost));
 
-    private sealed class BuiltinGroupMap : IExprMap
+    private sealed class BuiltinGroupMap(IEnumerable<KeyValuePair<object?, object?>> entries) : IExprMap
     {
-        private readonly IReadOnlyList<KeyValuePair<object?, object?>> entries;
-
-        public BuiltinGroupMap(IEnumerable<KeyValuePair<object?, object?>> entries)
-        {
-            this.entries = Array.AsReadOnly(entries.ToArray());
-        }
+        private readonly IReadOnlyList<KeyValuePair<object?, object?>> entries = Array.AsReadOnly(entries.ToArray());
 
         public Type KeyType => typeof(object);
 

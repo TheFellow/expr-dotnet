@@ -342,7 +342,7 @@ internal static class ExprBuiltinStrings
 
         if (separator.Length == 0)
         {
-            string[] runes = text.EnumerateRunes().Select(static rune => rune.ToString()).ToArray();
+            string[] runes = [.. text.EnumerateRunes().Select(static rune => rune.ToString())];
             if (count < 0 || runes.Length <= count)
             {
                 return runes;
@@ -370,12 +370,12 @@ internal static class ExprBuiltinStrings
         }
 
         values.Add(text[start..]);
-        return values.ToArray();
+        return [.. values];
     }
 
     private static string ReplaceEmpty(string text, string newValue, int count)
     {
-        string[] runes = text.EnumerateRunes().Select(static rune => rune.ToString()).ToArray();
+        string[] runes = [.. text.EnumerateRunes().Select(static rune => rune.ToString())];
         int possible = runes.Length + 1;
         int replacements = count < 0 ? possible : Math.Min(count, possible);
         var result = new StringBuilder(text.Length + (newValue.Length * replacements));
@@ -398,7 +398,7 @@ internal static class ExprBuiltinStrings
     private static string TrimRunes(string text, string cutset)
     {
         var removed = new HashSet<Rune>(cutset.EnumerateRunes());
-        Rune[] runes = text.EnumerateRunes().ToArray();
+        Rune[] runes = [.. text.EnumerateRunes()];
         int first = 0;
         while (first < runes.Length && removed.Contains(runes[first]))
         {
