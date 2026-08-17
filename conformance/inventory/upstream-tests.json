@@ -2785,8 +2785,8 @@
         },
         {
           "type": "dotnet_test",
-          "path": "tests/Expr.Tests/Execution/OpcodeExecutionTests.cs",
-          "symbol": "Direct_fast_and_dynamic_call_opcodes_execute_delegates"
+          "path": "tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs",
+          "symbol": "Public_dynamic_calls_adapt_real_host_delegate_parameters"
         }
       ],
       "note": "The linked .NET regression covers this named upstream behavior."
@@ -2805,8 +2805,8 @@
         },
         {
           "type": "dotnet_test",
-          "path": "tests/Expr.Tests/Execution/OpcodeExecutionTests.cs",
-          "symbol": "Direct_fast_and_dynamic_call_opcodes_execute_delegates"
+          "path": "tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs",
+          "symbol": "Public_dynamic_calls_adapt_real_host_delegate_parameters"
         }
       ],
       "note": "The linked .NET regression covers this named upstream behavior."
@@ -3183,8 +3183,8 @@
         },
         {
           "type": "dotnet_test",
-          "path": "tests/Expr.Tests/Execution/OpcodeExecutionTests.cs",
-          "symbol": "Direct_fast_and_dynamic_call_opcodes_execute_delegates"
+          "path": "tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs",
+          "symbol": "Public_dynamic_calls_adapt_real_host_delegate_parameters"
         }
       ],
       "note": "The linked .NET regression covers this named upstream behavior."
@@ -9760,8 +9760,8 @@
         },
         {
           "type": "dotnet_test",
-          "path": "tests/Expr.Tests/Execution/OpcodeExecutionTests.cs",
-          "symbol": "Time_and_duration_arithmetic_matches_upstream_runtime_helpers"
+          "path": "tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs",
+          "symbol": "Public_dynamic_evaluation_supports_temporal_arithmetic_in_both_operand_orders"
         }
       ],
       "note": "Expression behavior is tested through the documented TimeSpan, DateTimeOffset, and TimeZoneInfo mappings."
@@ -9785,8 +9785,8 @@
         },
         {
           "type": "dotnet_test",
-          "path": "tests/Expr.Tests/Execution/OpcodeExecutionTests.cs",
-          "symbol": "Time_and_duration_arithmetic_matches_upstream_runtime_helpers"
+          "path": "tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs",
+          "symbol": "Public_dynamic_evaluation_supports_temporal_arithmetic_in_both_operand_orders"
         }
       ],
       "note": "Expression behavior is tested through the documented TimeSpan, DateTimeOffset, and TimeZoneInfo mappings."
@@ -9810,8 +9810,8 @@
         },
         {
           "type": "dotnet_test",
-          "path": "tests/Expr.Tests/Execution/OpcodeExecutionTests.cs",
-          "symbol": "Time_and_duration_arithmetic_matches_upstream_runtime_helpers"
+          "path": "tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs",
+          "symbol": "Public_dynamic_evaluation_supports_temporal_arithmetic_in_both_operand_orders"
         }
       ],
       "note": "Expression behavior is tested through the documented TimeSpan, DateTimeOffset, and TimeZoneInfo mappings."
@@ -9858,7 +9858,7 @@
         {
           "type": "dotnet_test",
           "path": "tests/Expr.Tests/Compilation/OpcodeAndProgramTests.cs",
-          "symbol": "Disassembler_recognizes_every_opcode"
+          "symbol": "Compiler_output_disassembles_without_unknown_operands"
         }
       ],
       "note": "The upstream file's test family maps to the linked focused .NET suite."
