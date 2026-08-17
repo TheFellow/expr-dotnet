@@ -102,16 +102,14 @@ public sealed class CompilerTests
     }
 
     [Fact]
-    public void Constant_regex_limits_are_enforced_during_compilation()
+    public void Constant_regex_limits_are_enforced_during_checking()
     {
         ExprConfiguration configuration = ExprConfiguration.Default.WithRegularExpressionLimits(
             TimeSpan.FromMilliseconds(100),
             3);
         SyntaxTree tree = new SyntaxParser().Parse("'text' matches 'long'");
-        ExprSemanticModel model = new ExprChecker().Check(tree, ExprConfiguration.Default);
-
-        ExprCompilationException exception = Assert.Throws<ExprCompilationException>(
-            () => ExprCompiler.Compile(model, configuration));
+        ExprCheckException exception = Assert.Throws<ExprCheckException>(
+            () => new ExprChecker().Check(tree, configuration));
 
         Assert.Contains("maximum length", exception.Message, StringComparison.Ordinal);
     }
@@ -257,6 +255,37 @@ public sealed class CompilerTests
             name,
             [new ExprFunctionOverload(parameters, ExprTypes.Integer)],
             static _ => 0L);
+    }
+
+    [Fact]
+    public void Public_compiler_handles_consumer_constants_and_reports_its_real_depth_limit()
+    {
+        ExprConfiguration ordinary = ExprConfiguration.Default.WithOptimization(false);
+        var nilTree = new SyntaxTree(new ConstantNode(null, default), new SourceText(string.Empty));
+        var bytesTree = new SyntaxTree(
+            new ConstantNode(new ReadOnlyMemory<byte>("bytes"u8.ToArray()), default),
+            new SourceText(string.Empty));
+
+        Assert.Null(ExprEngine.Compile(nilTree, ordinary).Run(
+            cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(
+            "bytes"u8.ToArray(),
+            Assert.IsType<ReadOnlyMemory<byte>>(ExprEngine.Compile(bytesTree, ordinary).Run(
+                cancellationToken: TestContext.Current.CancellationToken)).ToArray());
+
+        SyntaxNode root = new IntegerNode(1, default);
+        for (var depth = 0; depth < 1_025; depth++)
+        {
+            root = new UnaryNode("+", root, default);
+        }
+
+        var deepTree = new SyntaxTree(root, new SourceText(string.Empty));
+        ExprConfiguration deep = ordinary.WithMaximumCheckDepth(2_000);
+        ExprCompilationException exception = Assert.Throws<ExprCompilationException>(() => ExprEngine.Compile(
+            deepTree,
+            deep,
+            new ExprCompilationOptions { EnableProfiling = true }));
+        Assert.Contains("compilation depth", exception.Message, StringComparison.Ordinal);
     }
 
     private static ExprProgram Compile(string source, ExprConfiguration configuration)

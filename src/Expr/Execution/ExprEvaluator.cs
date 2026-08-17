@@ -23,9 +23,11 @@ public sealed class ExprEvaluator
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(program);
-        var requestedOptions = options ?? new ExprEvaluationOptions();
-        ExprProgramValidator.Validate(program, requestedOptions);
-        return new ExprExecutionMachine(program, environment, requestedOptions, cancellationToken).RunValue();
+        return new ExprExecutionMachine(
+            program,
+            environment,
+            options ?? new ExprEvaluationOptions(),
+            cancellationToken).RunValue();
     }
 
     /// <summary>Evaluates a program and returns resource and profiling information.</summary>
@@ -41,8 +43,10 @@ public sealed class ExprEvaluator
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(program);
-        var requestedOptions = options ?? new ExprEvaluationOptions();
-        ExprProgramValidator.Validate(program, requestedOptions);
-        return new ExprExecutionMachine(program, environment, requestedOptions, cancellationToken).RunDetailed();
+        return new ExprExecutionMachine(
+            program,
+            environment,
+            options ?? new ExprEvaluationOptions(),
+            cancellationToken).RunDetailed();
     }
 }

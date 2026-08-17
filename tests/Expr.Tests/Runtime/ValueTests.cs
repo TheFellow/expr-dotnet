@@ -125,6 +125,33 @@ public sealed class ValueTests
     }
 
     [Fact]
+    public void Public_value_contract_covers_all_clr_scalar_families()
+    {
+        Assert.Equal(ExprValueKind.Nil, ExprValue.Classify(null));
+        Assert.Equal(ExprValueKind.Boolean, ExprValue.Classify(true));
+        Assert.Equal(ExprValueKind.SignedInteger, ExprValue.Classify((nint)1));
+        Assert.Equal(ExprValueKind.UnsignedInteger, ExprValue.Classify((nuint)1));
+        Assert.Equal(ExprValueKind.Float, ExprValue.Classify((Half)1));
+        Assert.Equal(ExprValueKind.String, ExprValue.Classify("value"));
+        Assert.Equal(ExprValueKind.Time, ExprValue.Classify(DateTime.UtcNow));
+        Assert.Equal(ExprValueKind.Duration, ExprValue.Classify(TimeSpan.Zero));
+        Assert.Equal(ExprValueKind.Function, ExprValue.Classify(new Func<int>(static () => 1)));
+        Assert.Equal(ExprValueKind.Map, ExprValue.Classify(new Dictionary<string, int>()));
+        Assert.Equal(ExprValueKind.Object, ExprValue.Classify(new object()));
+
+        object[] numbers =
+        [
+            (sbyte)1, (byte)1, (short)1, (ushort)1, 1, 1U, 1L, 1UL,
+            (nint)1, (nuint)1, (Half)1, 1F, 1D,
+        ];
+        foreach (object number in numbers)
+        {
+            Assert.Equal(1L, ExprValue.ToInt64(number));
+            Assert.Equal(1D, ExprValue.ToDouble(number));
+        }
+    }
+
+    [Fact]
     public void Collection_helpers_support_negative_indices_membership_and_length()
     {
         int[] values = [10, 20, 30];
@@ -139,6 +166,27 @@ public sealed class ValueTests
         Assert.Throws<ExprRuntimeException>(() => ExprValue.FetchIndex(values, 3));
         Assert.Equal(4, ExprValue.StorageLength("🐧"));
         Assert.Equal((byte)0xF0, ExprValue.FetchIndex("🐧", 0));
+        Assert.Equal(1, ExprValue.StorageLength(map));
+        Assert.Throws<ExprRuntimeException>(() => ExprValue.FetchIndex(map, 0));
+        Assert.Throws<ExprRuntimeException>(() => ExprValue.In(1, 42));
+    }
+
+    [Fact]
+    public void Public_equality_covers_temporal_and_map_mismatch_paths()
+    {
+        Assert.True(ExprValue.Equal(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1)));
+        Assert.True(ExprValue.Equal(
+            DateTime.SpecifyKind(DateTime.UnixEpoch, DateTimeKind.Utc),
+            DateTime.SpecifyKind(DateTime.UnixEpoch, DateTimeKind.Unspecified)));
+        Assert.True(ExprValue.Equal(
+            DateTime.SpecifyKind(DateTime.UnixEpoch, DateTimeKind.Local),
+            new DateTimeOffset(DateTime.SpecifyKind(DateTime.UnixEpoch, DateTimeKind.Local))));
+        Assert.False(ExprValue.Equal(
+            new Dictionary<string, int> { ["a"] = 1 },
+            new Dictionary<string, int>()));
+        Assert.False(ExprValue.Equal(
+            new Dictionary<string, int> { ["a"] = 1 },
+            new Dictionary<string, int> { ["b"] = 1 }));
     }
 
     [Fact]

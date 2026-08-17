@@ -45,7 +45,7 @@ public sealed class ExecutionSecurityTests
     [Fact]
     public void Work_budget_stops_adversarial_backward_jumps()
     {
-        ExprProgram program = Program([(ExprOpcode.OpJumpBackward, 1)]);
+        ExprProgram program = ExecutionTestCompiler.Compile("all(1..1000, # > 0)");
 
         ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
             ExprEvaluator.Shared.Evaluate(
@@ -59,7 +59,7 @@ public sealed class ExecutionSecurityTests
     [Fact]
     public void Cancellation_is_observed_during_backward_jumps()
     {
-        ExprProgram program = Program([(ExprOpcode.OpJumpBackward, 1)]);
+        ExprProgram program = ExecutionTestCompiler.Compile("all(1..1000, # > 0)");
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -123,64 +123,10 @@ public sealed class ExecutionSecurityTests
         Assert.Contains("cannot fetch", exception.Message, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(ExprOpcode.OpPop, 0, "stack underflow")]
-    [InlineData(ExprOpcode.OpEnd, 0, "predicate scope underflow")]
-    [InlineData(ExprOpcode.OpJump, -1, "forward jump target")]
-    [InlineData(ExprOpcode.OpJumpBackward, 0, "backward jump target")]
-    [InlineData(ExprOpcode.OpCast, 100, "cast operand")]
-    [InlineData(ExprOpcode.OpCreate, 100, "create operand")]
-    [InlineData(ExprOpcode.OpTrue, 1, "unexpected operand")]
-    public void Malformed_programs_are_rejected_deterministically(
-        ExprOpcode opcode,
-        int argument,
-        string expected)
-    {
-        ExprProgram program = Program([(opcode, argument)]);
-
-        ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                program,
-                cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Invalid_constant_function_variable_and_unknown_opcode_operands_are_rejected()
-    {
-        AssertFailure(Program([(ExprOpcode.OpPush, 0)]), "constant operand");
-        AssertFailure(Program([(ExprOpcode.OpLoadFunc, 0)]), "function operand");
-        AssertFailure(Program([(ExprOpcode.OpLoadVar, 0)]), "local-variable operand");
-        AssertFailure(Program([((ExprOpcode)255, 0)]), "unknown opcode");
-        AssertFailure(Program([(ExprOpcode.OpInvalid, 0)]), "invalid opcode");
-    }
-
-    [Fact]
-    public void Open_scope_and_unbalanced_profile_boundaries_are_rejected()
-    {
-        ExprProgram scopeProgram = Program(
-            [(ExprOpcode.OpPush, 0), (ExprOpcode.OpBegin, 0), (ExprOpcode.OpInt, 1)],
-            [new ExprArray([1L])]);
-        AssertFailure(scopeProgram, "open predicate scope");
-
-        var point = new ExprProfilePoint(0, null, "IntegerNode", new SourceLocation(0, 1));
-        ExprProgram profileProgram = Program(
-            [(ExprOpcode.OpProfileEnd, 0), (ExprOpcode.OpInt, 1)],
-            [point]);
-        ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                profileProgram,
-                options: new ExprEvaluationOptions { EnableProfiling = true },
-                cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains("profile scope is corrupt", exception.Message, StringComparison.Ordinal);
-    }
-
     [Fact]
     public void Stack_scope_and_collection_limits_are_enforced_before_growth()
     {
-        ExprProgram stackProgram = Program(
-            [(ExprOpcode.OpInt, 1), (ExprOpcode.OpInt, 2)]);
+        ExprProgram stackProgram = ExecutionTestCompiler.Compile("1 + 2");
         ExprExecutionException stack = Assert.Throws<ExprExecutionException>(() =>
             ExprEvaluator.Shared.Evaluate(
                 stackProgram,
@@ -245,28 +191,4 @@ public sealed class ExecutionSecurityTests
         Assert.Equal(Enumerable.Range(0, opcodes.Length), opcodes.Select(static opcode => (int)opcode));
     }
 
-    private static void AssertFailure(ExprProgram program, string expected)
-    {
-        ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                program,
-                cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
-    }
-
-    private static ExprProgram Program(
-        IReadOnlyList<(ExprOpcode Opcode, int Argument)> instructions,
-        IReadOnlyList<object?>? constants = null)
-    {
-        SyntaxTree tree = new SyntaxParser().Parse("0");
-        return new ExprProgram(
-            tree,
-            instructions.Select(item => new ExprInstruction(
-                item.Opcode,
-                item.Argument,
-                new SourceLocation(0, 1))),
-            constants ?? [],
-            [],
-            0);
-    }
 }

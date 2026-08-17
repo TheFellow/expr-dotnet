@@ -25,46 +25,30 @@ public sealed class OpcodeAndProgramTests
     }
 
     [Fact]
-    public void Disassembler_recognizes_every_opcode()
+    public void Compiler_output_disassembles_without_unknown_operands()
     {
-        var parser = new SyntaxParser();
-        SyntaxTree tree = parser.Parse("nil");
-        ExprOpcode[] opcodes = Enum.GetValues<ExprOpcode>();
-        var instructions = new List<ExprInstruction>(opcodes.Length);
-        foreach (ExprOpcode opcode in opcodes)
-        {
-            instructions.Add(new ExprInstruction(opcode, 0, tree.Root.Location));
-        }
-
-        var program = new ExprProgram(tree, instructions, [42L], [], 0);
+        ExprProgram program = ExprEngine.Compile(
+            "let items = map(1..3, # * 2); items[1] == 4 ? sum(items) : 0").Program;
 
         string listing = program.Disassemble();
-        foreach (ExprOpcode opcode in opcodes)
-        {
-            Assert.Contains(opcode.ToString(), listing, StringComparison.Ordinal);
-        }
 
+        Assert.Contains(ExprOpcode.OpStore.ToString(), listing, StringComparison.Ordinal);
+        Assert.Contains(ExprOpcode.OpBegin.ToString(), listing, StringComparison.Ordinal);
+        Assert.Contains(ExprOpcode.OpJumpIfFalse.ToString(), listing, StringComparison.Ordinal);
         Assert.DoesNotContain("unknown", listing, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Program_defensively_snapshots_all_structural_collections()
+    public void Compiler_output_is_immutable_and_snapshots_consumer_byte_constants()
     {
-        SyntaxTree tree = new SyntaxParser().Parse("1");
-        var instructions = new List<ExprInstruction>
-        {
-            new(ExprOpcode.OpPush, 0, tree.Root.Location),
-        };
-        var constants = new List<object?> { 1L };
-        var variableNames = new Dictionary<int, string> { [0] = "answer" };
-        var program = new ExprProgram(tree, instructions, constants, [], 1, variableNames);
+        byte[] bytes = [1, 2, 3];
+        var tree = new SyntaxTree(new BytesNode(bytes, new SourceLocation(0, 1)), new SourceText("0"));
+        ExprProgram program = ExprEngine.Compile(tree).Program;
 
-        instructions.Clear();
-        constants[0] = 2L;
-        variableNames[0] = "changed";
+        bytes[0] = 99;
 
-        Assert.Single(program.Instructions);
-        Assert.Equal(1L, program.Constants[0]);
-        Assert.Equal("answer", program.VariableNames[0]);
+        var stored = Assert.IsType<ReadOnlyMemory<byte>>(Assert.Single(program.Constants));
+        Assert.Equal(new byte[] { 1, 2, 3 }, stored.ToArray());
+        Assert.Throws<NotSupportedException>(() => ((IList<ExprInstruction>)program.Instructions).Clear());
     }
 }

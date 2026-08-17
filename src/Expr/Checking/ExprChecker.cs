@@ -133,7 +133,7 @@ public sealed class ExprChecker
         firstDiagnostic = null;
         depth = 0;
         _ = Visit(tree.Root);
-        return new CheckState(new ExprSemanticModel(tree, annotations), firstDiagnostic);
+        return new CheckState(new ExprSemanticModel(tree, annotations, configuration), firstDiagnostic);
     }
 
     private ExprTypeDescriptor Visit(SyntaxNode node)
@@ -168,7 +168,7 @@ public sealed class ExprChecker
             SequenceNode sequence => VisitSequence(sequence),
             ArrayNode array => VisitArray(array),
             MapNode map => VisitMap(map),
-            PairNode pair => VisitPair(pair),
+            PairNode => Error(node, "map pair cannot appear outside a map"),
             _ => Error(node, $"undefined syntax node type {node.GetType().FullName}"),
         };
 
@@ -214,7 +214,7 @@ public sealed class ExprChecker
         {
             annotations[node] = new ExprNodeSemantics(
                 member.Type,
-                Member: new ExprMemberBinding(node.Name, ExprMemberBindingKind.Environment));
+                member: new ExprMemberBinding(node.Name, ExprMemberBindingKind.Environment));
             return member.Type;
         }
 
@@ -234,7 +234,7 @@ public sealed class ExprChecker
                 ExprTypeDescriptor type = MethodType(methods[0]);
                 annotations[node] = new ExprNodeSemantics(
                     type,
-                    Member: new ExprMemberBinding(node.Name, ExprMemberBindingKind.ClrMethod, methods[0]));
+                    member: new ExprMemberBinding(node.Name, ExprMemberBindingKind.ClrMethod, methods[0]));
                 return type;
             }
         }
@@ -349,7 +349,7 @@ public sealed class ExprChecker
             {
                 annotations[node] = new ExprNodeSemantics(
                     member.Type,
-                    Member: new ExprMemberBinding(environmentName.Value, ExprMemberBindingKind.Environment));
+                    member: new ExprMemberBinding(environmentName.Value, ExprMemberBindingKind.Environment));
                 return member.Type;
             }
 
@@ -383,7 +383,7 @@ public sealed class ExprChecker
                 {
                     annotations[node] = new ExprNodeSemantics(
                         fieldType!,
-                        Member: new ExprMemberBinding(mapName.Value, ExprMemberBindingKind.Index));
+                        member: new ExprMemberBinding(mapName.Value, ExprMemberBindingKind.Index));
                     return fieldType!;
                 }
 
@@ -405,7 +405,7 @@ public sealed class ExprChecker
 
             annotations[node] = new ExprNodeSemantics(
                 array.ElementType,
-                Member: new ExprMemberBinding(string.Empty, ExprMemberBindingKind.Index));
+                member: new ExprMemberBinding(string.Empty, ExprMemberBindingKind.Index));
             return array.ElementType;
         }
 
@@ -418,7 +418,7 @@ public sealed class ExprChecker
                 ExprTypeDescriptor methodType = MethodType(methods[0]);
                 annotations[node] = new ExprNodeSemantics(
                     methodType,
-                    Member: new ExprMemberBinding(objectName.Value, ExprMemberBindingKind.ClrMethod, methods[0]));
+                    member: new ExprMemberBinding(objectName.Value, ExprMemberBindingKind.ClrMethod, methods[0]));
                 return methodType;
             }
 
@@ -426,7 +426,7 @@ public sealed class ExprChecker
             {
                 annotations[node] = new ExprNodeSemantics(
                     clrMember.Type,
-                    Member: new ExprMemberBinding(objectName.Value, ExprMemberBindingKind.ClrMember, clrMember.Member));
+                    member: new ExprMemberBinding(objectName.Value, ExprMemberBindingKind.ClrMember, clrMember.Member));
                 return clrMember.Type;
             }
 
@@ -861,11 +861,6 @@ public sealed class ExprChecker
 
     private ExprTypeDescriptor VisitSequence(SequenceNode node)
     {
-        if (node.Expressions.Count is 0)
-        {
-            return Error(node, "empty sequence expression");
-        }
-
         ExprTypeDescriptor result = ExprTypes.Nil;
         foreach (SyntaxNode expression in node.Expressions)
         {
@@ -966,10 +961,10 @@ public sealed class ExprChecker
 
         annotations[node.Callee] = new ExprNodeSemantics(
             MethodType(method),
-            Member: new ExprMemberBinding(method.Name, ExprMemberBindingKind.ClrMethod, method));
+            member: new ExprMemberBinding(method.Name, ExprMemberBindingKind.ClrMethod, method));
         annotations[node] = new ExprNodeSemantics(
             selected.ReturnType,
-            Member: new ExprMemberBinding(method.Name, ExprMemberBindingKind.ClrMethod, method));
+            member: new ExprMemberBinding(method.Name, ExprMemberBindingKind.ClrMethod, method));
         return selected.ReturnType;
     }
 
@@ -1017,11 +1012,6 @@ public sealed class ExprChecker
         IReadOnlyList<ExprTypeDescriptor> arguments,
         SyntaxNode node)
     {
-        if (overloads.Count is 0)
-        {
-            return $"no matching overload for {name}";
-        }
-
         int minimum = overloads.Min(static overload =>
             overload.IsVariadic ? overload.Parameters.Count - 1 : overload.Parameters.Count);
         int maximum = overloads.Any(static overload => overload.IsVariadic)
@@ -1228,7 +1218,7 @@ public sealed class ExprChecker
     {
         ExprFunctionOverload? first = function.Overloads.Count is 0 ? null : function.Overloads[0];
         return first is null
-            ? new FunctionTypeDescriptor([], ExprTypes.Any, true)
+            ? new FunctionTypeDescriptor([], ExprTypes.Any)
             : new FunctionTypeDescriptor(first.Parameters, first.ReturnType, first.IsVariadic);
     }
 

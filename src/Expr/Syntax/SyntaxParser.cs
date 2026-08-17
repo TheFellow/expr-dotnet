@@ -16,28 +16,82 @@ public sealed record SyntaxParserOptions
     public const int DefaultMaximumSourceLength = 1_000_000;
 
     /// <summary>Gets or initializes the maximum source length, or zero for no limit.</summary>
-    public int MaximumSourceLength { get; init; } = DefaultMaximumSourceLength;
+    public int MaximumSourceLength
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            field = value;
+        }
+    } = DefaultMaximumSourceLength;
 
     /// <summary>Gets or initializes the maximum number of AST nodes, or zero for no limit.</summary>
-    public int MaximumNodeCount { get; init; } = DefaultMaximumNodeCount;
+    public int MaximumNodeCount
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            field = value;
+        }
+    } = DefaultMaximumNodeCount;
 
     /// <summary>Gets or initializes the maximum recursive grammar depth.</summary>
-    public int MaximumParseDepth { get; init; } = 512;
+    public int MaximumParseDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 512;
 
     /// <summary>Gets or initializes whether <c>if</c> and <c>else</c> are ordinary identifiers.</summary>
     public bool DisableIfOperator { get; init; }
 
     /// <summary>Gets or initializes built-ins disabled by the host configuration.</summary>
-    public IReadOnlySet<string> DisabledBuiltins { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+    public IReadOnlySet<string> DisabledBuiltins
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>Gets or initializes names whose host definitions override built-ins.</summary>
-    public IReadOnlySet<string> OverriddenBuiltins { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+    public IReadOnlySet<string> OverriddenBuiltins
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>Contains an immutable syntax tree and its original source.</summary>
-/// <param name="Root">The root syntax node.</param>
-/// <param name="Source">The original source.</param>
-public sealed record SyntaxTree(SyntaxNode Root, SourceText Source);
+public sealed record SyntaxTree
+{
+    /// <summary>Initializes a syntax tree.</summary>
+    public SyntaxTree(SyntaxNode root, SourceText source)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(source);
+        Root = root;
+        Source = source;
+    }
+
+    /// <summary>Gets the root expression.</summary>
+    public SyntaxNode Root { get; }
+
+    /// <summary>Gets the original source text.</summary>
+    public SourceText Source { get; }
+}
 
 /// <summary>Parses Expr tokens with the same Pratt grammar and precedences as expr-lang/expr.</summary>
 public sealed class SyntaxParser
@@ -131,9 +185,6 @@ public sealed class SyntaxParser
     {
         ArgumentNullException.ThrowIfNull(text);
         var requestedOptions = options ?? new SyntaxParserOptions();
-        ArgumentNullException.ThrowIfNull(requestedOptions.DisabledBuiltins);
-        ArgumentNullException.ThrowIfNull(requestedOptions.OverriddenBuiltins);
-        ArgumentOutOfRangeException.ThrowIfNegative(requestedOptions.MaximumSourceLength);
         if (requestedOptions.MaximumSourceLength > 0 && text.Length > requestedOptions.MaximumSourceLength)
         {
             throw new SyntaxException(
@@ -207,7 +258,7 @@ public sealed class SyntaxParser
     private SyntaxNode ParseExpression(int precedence)
     {
         parseDepth++;
-        if (options.MaximumParseDepth <= 0 || parseDepth > options.MaximumParseDepth)
+        if (parseDepth > options.MaximumParseDepth)
         {
             Error(Current, $"compilation failed: expression exceeds maximum parse depth of {options.MaximumParseDepth}");
         }

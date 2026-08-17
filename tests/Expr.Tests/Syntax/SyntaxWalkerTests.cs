@@ -90,15 +90,15 @@ public sealed class SyntaxWalkerTests
     [Fact]
     public void GetChildren_includes_optimizer_map_metadata_after_arguments()
     {
-        var argument = new IdentifierNode("items", default);
-        var map = new PointerNode(string.Empty, default);
-        var builtin = new BuiltinNode("filter", [argument], default, map: map);
+        var builtin = Assert.IsType<BuiltinNode>(ExprEngine.Compile(
+            "map(filter(items, # > 0), # * 2)",
+            Expr.Configuration.ExprConfiguration.Default.AllowUndefinedVariables()).SyntaxTree.Root);
+        Assert.NotNull(builtin.Map);
 
         var children = SyntaxWalker.GetChildren(builtin);
 
-        Assert.Equal(2, children.Count);
-        Assert.Same(argument, children[0]);
-        Assert.Same(map, children[1]);
+        Assert.Equal(builtin.Arguments.Count + 1, children.Count);
+        Assert.Same(builtin.Map, children[^1]);
     }
 
     [Fact]
@@ -113,6 +113,49 @@ public sealed class SyntaxWalkerTests
 
         Assert.Contains("depth limit", depthError.Message, StringComparison.Ordinal);
         Assert.Contains("node limit", countError.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Walker_options_and_unknown_consumer_nodes_fail_at_the_public_boundary()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxWalkerOptions { MaximumDepth = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxWalkerOptions { MaximumNodeCount = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new NoOpRewriter { MaximumDepth = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => SyntaxWalker.Traverse(
+            new NilNode(default),
+            (SyntaxTraversalOrder)42).ToArray());
+        Assert.Throws<ArgumentOutOfRangeException>(() => SyntaxWalker.GetChildren(new UnsupportedNode(default)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SyntaxWalker.Traverse(new UnsupportedNode(default)).ToArray());
+    }
+
+    [Fact]
+    public void GetChildren_covers_every_public_node_shape()
+    {
+        SyntaxNode value = new IntegerNode(1, default);
+        SyntaxNode[] nodes =
+        [
+            new UnaryNode("-", value, default),
+            new BinaryNode("+", value, value, default),
+            new ChainNode(value, default),
+            new MemberNode(value, value, false, false, default),
+            new SliceNode(value, null, null, default),
+            new SliceNode(value, null, value, default),
+            new SliceNode(value, value, null, default),
+            new SliceNode(value, value, value, default),
+            new CallNode(value, [value], default),
+            new BuiltinNode("len", [value], default),
+            new PredicateNode(value, default),
+            new ConditionalNode(value, value, value, false, default),
+            new VariableDeclaratorNode("x", value, value, default),
+            new SequenceNode([value], default),
+            new ArrayNode([value], default),
+            new MapNode([new PairNode(value, value, default)], default),
+            new PairNode(value, value, default),
+            new NilNode(default),
+            new PointerNode(string.Empty, default),
+        ];
+
+        Assert.All(nodes, static node => Assert.NotNull(SyntaxWalker.GetChildren(node)));
     }
 
     [Fact]
@@ -153,6 +196,8 @@ public sealed class SyntaxWalkerTests
             });
         }
     }
+
+    private sealed record UnsupportedNode(SourceLocation Location) : SyntaxNode(Location);
 
     private sealed class IdentifierToNilRewriter : SyntaxRewriter
     {

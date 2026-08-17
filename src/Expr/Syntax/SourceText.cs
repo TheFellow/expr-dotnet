@@ -5,10 +5,27 @@ using System.Text;
 namespace Expr.Syntax;
 
 /// <summary>Identifies a half-open range of Unicode scalar values in source text.</summary>
-/// <param name="Start">The zero-based scalar offset at which the range starts.</param>
-/// <param name="End">The zero-based scalar offset immediately after the range.</param>
-public readonly record struct SourceLocation(int Start, int End)
+public readonly record struct SourceLocation
 {
+    /// <summary>Initializes a valid half-open source range.</summary>
+    public SourceLocation(int start, int end)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+        if (end < start)
+        {
+            throw new ArgumentOutOfRangeException(nameof(end), "The end of a source range cannot precede its start.");
+        }
+
+        Start = start;
+        End = end;
+    }
+
+    /// <summary>Gets the zero-based scalar offset at which the range starts.</summary>
+    public int Start { get; }
+
+    /// <summary>Gets the zero-based scalar offset immediately after the range.</summary>
+    public int End { get; }
+
     /// <summary>Gets the length of the range in Unicode scalar values.</summary>
     public int Length => End - Start;
 }

@@ -226,6 +226,16 @@ public sealed class ParserTests
     }
 
     [Fact]
+    public void Parser_options_reject_invalid_state_immediately()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxParserOptions { MaximumSourceLength = -1 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxParserOptions { MaximumNodeCount = -1 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxParserOptions { MaximumParseDepth = 0 });
+        Assert.Throws<ArgumentNullException>(() => new SyntaxParserOptions { DisabledBuiltins = null! });
+        Assert.Throws<ArgumentNullException>(() => new SyntaxParserOptions { OverriddenBuiltins = null! });
+    }
+
+    [Fact]
     public void Try_parse_returns_structured_diagnostic()
     {
         var success = parser.TryParse("foo +", out var tree, out var diagnostic);

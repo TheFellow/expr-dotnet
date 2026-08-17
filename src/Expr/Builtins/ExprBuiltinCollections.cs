@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Expr.Execution;
 using Expr.Runtime;
 
 namespace Expr.Builtins;
@@ -394,12 +395,7 @@ internal static class ExprBuiltinCollections
 
     internal static void EnsureMapKey(object? key)
     {
-        if (key is IComparable)
-        {
-            return;
-        }
-
-        if (ExprCollections.TryAsArray(key, out _) || ExprCollections.TryAsMap(key, out _))
+        if (!ExprExecutionOperations.IsValidMapKey(key))
         {
             throw new ExprRuntimeException(
                 $"runtime error: hash of unhashable type {ExprBuiltinValues.TypeNameOf(key)}");

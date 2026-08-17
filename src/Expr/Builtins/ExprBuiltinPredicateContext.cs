@@ -29,5 +29,17 @@ public sealed record ExprBuiltinPredicateContext
     public bool HasInitialValue { get; init; }
 
     /// <summary>Gets the requested sort order for <c>sortBy</c>.</summary>
-    public string SortOrder { get; init; } = "asc";
+    public string SortOrder
+    {
+        get;
+        init
+        {
+            if (value is not ("asc" or "desc"))
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), value, "Sort order must be asc or desc.");
+            }
+
+            field = value;
+        }
+    } = "asc";
 }

@@ -28,13 +28,10 @@ public sealed class SyntaxDumperTests
     [Fact]
     public void Dump_can_include_locations_and_optimizer_metadata()
     {
-        var node = new BuiltinNode(
-            "count",
-            [new IdentifierNode("items", new SourceLocation(2, 7))],
-            new SourceLocation(1, 9),
-            throws: true,
-            map: new PointerNode("index", new SourceLocation(10, 16)),
-            threshold: 3);
+        SyntaxNode throwing = ExprEngine.Compile("filter([1], # > 0)[0]").SyntaxTree.Root;
+        SyntaxNode mapped = ExprEngine.Compile("map(filter([1], # > 0), # * 2)").SyntaxTree.Root;
+        SyntaxNode threshold = ExprEngine.Compile("count([1], # > 0) >= 3").SyntaxTree.Root;
+        var node = new ArrayNode([throwing, mapped, threshold], new SourceLocation(1, 9));
 
         var dump = SyntaxDumper.Dump(node, new SyntaxDumperOptions { IncludeLocations = true });
 
@@ -101,5 +98,12 @@ public sealed class SyntaxDumperTests
 
         Assert.Contains("depth limit", depthError.Message, StringComparison.Ordinal);
         Assert.Contains("node limit", countError.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Dump_options_reject_invalid_state_immediately()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxDumperOptions { MaximumDepth = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxDumperOptions { MaximumNodeCount = 0 });
     }
 }

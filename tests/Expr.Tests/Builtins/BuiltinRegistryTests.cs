@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Expr.Builtins;
+using Expr.Runtime;
 using Expr.Types;
 using Xunit;
 
@@ -64,5 +65,23 @@ public sealed class BuiltinRegistryTests
             library.Get("reduce").Overloads[0].Parameters[1]);
         Assert.Equal(2, reducer.Parameters.Count);
         Assert.Same(ExprTypes.Any, reducer.ReturnType);
+    }
+
+    [Fact]
+    public void Public_builtin_options_and_predicate_context_reject_invalid_state_immediately()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ExprBuiltinOptions { TimeProvider = null! });
+        Assert.Throws<ArgumentNullException>(() => new ExprBuiltinOptions { TimeZone = null! });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ExprBuiltinOptions { MaximumDepth = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ExprBuiltinOptions { MaximumAllocation = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ExprBuiltinPredicateContext((_, _, _) => true)
+        {
+            SortOrder = "sideways",
+        });
+        Assert.Throws<ArgumentException>(() => new ExprFunctionOverload([null!], ExprTypes.Any));
+        Assert.Throws<ArgumentException>(() => new ExprFunction(
+            "invalid",
+            [null!],
+            static _ => null));
     }
 }

@@ -11,10 +11,26 @@ namespace Expr.Syntax;
 public sealed record SyntaxPrinterOptions
 {
     /// <summary>Gets or initializes the maximum nested syntax depth.</summary>
-    public int MaximumDepth { get; init; } = 1_024;
+    public int MaximumDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 1_024;
 
     /// <summary>Gets or initializes the maximum number of visited nodes.</summary>
-    public int MaximumNodeCount { get; init; } = 100_000;
+    public int MaximumNodeCount
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 100_000;
 }
 
 /// <summary>Prints immutable syntax trees as deterministic, canonical Expr source.</summary>
@@ -198,23 +214,12 @@ public static class SyntaxPrinter
     {
         private readonly int maximumDepth;
         private readonly int maximumNodeCount;
-        private readonly HashSet<SyntaxNode> path = new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<object> constantPath = new(ReferenceEqualityComparer.Instance);
         private int nodeCount;
 
         internal Printer(SyntaxPrinterOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
-            if (options.MaximumDepth <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(options), "Maximum depth must be positive.");
-            }
-
-            if (options.MaximumNodeCount <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(options), "Maximum node count must be positive.");
-            }
-
             maximumDepth = options.MaximumDepth;
             maximumNodeCount = options.MaximumNodeCount;
         }
@@ -229,121 +234,114 @@ public static class SyntaxPrinter
         private void AppendNode(StringBuilder builder, SyntaxNode node, int depth)
         {
             Enter(node, depth);
-            try
+            switch (node)
             {
-                switch (node)
-                {
-                    case NilNode:
-                        builder.Append("nil");
-                        break;
-                    case IdentifierNode identifier:
-                        builder.Append(identifier.Name);
-                        break;
-                    case IntegerNode integer:
-                        builder.Append(integer.Value.ToString(CultureInfo.InvariantCulture));
-                        break;
-                    case FloatNode number:
-                        AppendFloatingPoint(builder, number.Value);
-                        break;
-                    case BooleanNode boolean:
-                        builder.Append(boolean.Value ? "true" : "false");
-                        break;
-                    case StringNode text:
-                        AppendQuotedString(builder, text.Value);
-                        break;
-                    case BytesNode bytes:
-                        AppendQuotedBytes(builder, bytes.Value.Span);
-                        break;
-                    case ConstantNode constant:
-                        AppendConstant(builder, constant.Value, depth + 1);
-                        break;
-                    case UnaryNode unary:
-                        AppendUnary(builder, unary, depth);
-                        break;
-                    case BinaryNode binary:
-                        AppendBinary(builder, binary, depth);
-                        break;
-                    case ChainNode chain:
-                        AppendNode(builder, chain.Expression, depth + 1);
-                        break;
-                    case MemberNode member:
-                        AppendMember(builder, member, depth);
-                        break;
-                    case SliceNode slice:
-                        AppendPostfixTarget(builder, slice.Target, depth + 1);
-                        builder.Append('[');
-                        if (slice.From is not null)
-                        {
-                            AppendGroupedExpression(builder, slice.From, depth + 1);
-                        }
+                case NilNode:
+                    builder.Append("nil");
+                    break;
+                case IdentifierNode identifier:
+                    builder.Append(identifier.Name);
+                    break;
+                case IntegerNode integer:
+                    builder.Append(integer.Value.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case FloatNode number:
+                    AppendFloatingPoint(builder, number.Value);
+                    break;
+                case BooleanNode boolean:
+                    builder.Append(boolean.Value ? "true" : "false");
+                    break;
+                case StringNode text:
+                    AppendQuotedString(builder, text.Value);
+                    break;
+                case BytesNode bytes:
+                    AppendQuotedBytes(builder, bytes.Value.Span);
+                    break;
+                case ConstantNode constant:
+                    AppendConstant(builder, constant.Value, depth + 1);
+                    break;
+                case UnaryNode unary:
+                    AppendUnary(builder, unary, depth);
+                    break;
+                case BinaryNode binary:
+                    AppendBinary(builder, binary, depth);
+                    break;
+                case ChainNode chain:
+                    AppendNode(builder, chain.Expression, depth + 1);
+                    break;
+                case MemberNode member:
+                    AppendMember(builder, member, depth);
+                    break;
+                case SliceNode slice:
+                    AppendPostfixTarget(builder, slice.Target, depth + 1);
+                    builder.Append('[');
+                    if (slice.From is not null)
+                    {
+                        AppendGroupedExpression(builder, slice.From, depth + 1);
+                    }
 
-                        builder.Append(':');
-                        if (slice.To is not null)
-                        {
-                            AppendGroupedExpression(builder, slice.To, depth + 1);
-                        }
+                    builder.Append(':');
+                    if (slice.To is not null)
+                    {
+                        AppendGroupedExpression(builder, slice.To, depth + 1);
+                    }
 
-                        builder.Append(']');
-                        break;
-                    case CallNode call:
-                        AppendPostfixTarget(builder, call.Callee, depth + 1);
-                        AppendArguments(builder, call.Arguments, depth);
-                        break;
-                    case BuiltinNode builtin:
-                        builder.Append(builtin.Name);
-                        AppendArguments(builder, builtin.Arguments, depth);
-                        break;
-                    case PredicateNode predicate:
-                        if (predicate.Body is SequenceNode)
-                        {
-                            builder.Append('{');
-                            AppendNode(builder, predicate.Body, depth + 1);
-                            builder.Append('}');
-                        }
-                        else
-                        {
-                            AppendNode(builder, predicate.Body, depth + 1);
-                        }
-
-                        break;
-                    case PointerNode pointer:
-                        builder.Append('#');
-                        builder.Append(pointer.Name);
-                        break;
-                    case ConditionalNode conditional:
-                        AppendConditional(builder, conditional, depth);
-                        break;
-                    case VariableDeclaratorNode variable:
-                        builder.Append("let ");
-                        builder.Append(variable.Name);
-                        builder.Append(" = ");
-                        AppendGroupedExpression(builder, variable.Value, depth + 1);
-                        builder.Append("; ");
-                        AppendNode(builder, variable.Body, depth + 1);
-                        break;
-                    case SequenceNode sequence:
-                        AppendSeparated(builder, sequence.Expressions, "; ", depth);
-                        break;
-                    case ArrayNode array:
-                        builder.Append('[');
-                        AppendSeparated(builder, array.Elements, ", ", depth);
-                        builder.Append(']');
-                        break;
-                    case MapNode map:
+                    builder.Append(']');
+                    break;
+                case CallNode call:
+                    AppendPostfixTarget(builder, call.Callee, depth + 1);
+                    AppendArguments(builder, call.Arguments, depth);
+                    break;
+                case BuiltinNode builtin:
+                    builder.Append(builtin.Name);
+                    AppendArguments(builder, builtin.Arguments, depth);
+                    break;
+                case PredicateNode predicate:
+                    if (predicate.Body is SequenceNode)
+                    {
                         builder.Append('{');
-                        AppendSeparated(builder, map.Pairs, ", ", depth);
+                        AppendNode(builder, predicate.Body, depth + 1);
                         builder.Append('}');
-                        break;
-                    case PairNode pair:
-                        AppendPair(builder, pair, depth);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(node), node.GetType(), "Unknown syntax node type.");
-                }
-            }
-            finally
-            {
-                _ = path.Remove(node);
+                    }
+                    else
+                    {
+                        AppendNode(builder, predicate.Body, depth + 1);
+                    }
+
+                    break;
+                case PointerNode pointer:
+                    builder.Append('#');
+                    builder.Append(pointer.Name);
+                    break;
+                case ConditionalNode conditional:
+                    AppendConditional(builder, conditional, depth);
+                    break;
+                case VariableDeclaratorNode variable:
+                    builder.Append("let ");
+                    builder.Append(variable.Name);
+                    builder.Append(" = ");
+                    AppendGroupedExpression(builder, variable.Value, depth + 1);
+                    builder.Append("; ");
+                    AppendNode(builder, variable.Body, depth + 1);
+                    break;
+                case SequenceNode sequence:
+                    AppendSeparated(builder, sequence.Expressions, "; ", depth);
+                    break;
+                case ArrayNode array:
+                    builder.Append('[');
+                    AppendSeparated(builder, array.Elements, ", ", depth);
+                    builder.Append(']');
+                    break;
+                case MapNode map:
+                    builder.Append('{');
+                    AppendSeparated(builder, map.Pairs, ", ", depth);
+                    builder.Append('}');
+                    break;
+                case PairNode pair:
+                    AppendPair(builder, pair, depth);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(node), node.GetType(), "Unknown syntax node type.");
             }
         }
 
@@ -720,10 +718,6 @@ public static class SyntaxPrinter
                     $"Syntax tree exceeds the configured printer node limit of {maximumNodeCount}.");
             }
 
-            if (!path.Add(node))
-            {
-                throw new InvalidOperationException("Syntax tree contains a reference cycle.");
-            }
         }
 
         private void EnterConstantContainer(object value)

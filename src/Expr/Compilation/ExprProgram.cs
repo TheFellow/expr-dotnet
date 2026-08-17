@@ -12,17 +12,7 @@ namespace Expr.Compilation;
 /// <summary>Contains immutable bytecode produced from a checked Expr syntax tree.</summary>
 public sealed class ExprProgram
 {
-
-    /// <summary>Initializes a program from an instruction stream and its immutable metadata.</summary>
-    /// <param name="syntaxTree">The checked source syntax.</param>
-    /// <param name="instructions">The ordered instructions.</param>
-    /// <param name="constants">The constant table.</param>
-    /// <param name="functions">The known-function table.</param>
-    /// <param name="variableCount">The required local-variable slot count.</param>
-    /// <param name="variableNames">Optional variable debug names by slot.</param>
-    /// <param name="functionNames">Optional function debug names by table index.</param>
-    /// <param name="profilePoints">Optional profiling metadata in identifier order.</param>
-    public ExprProgram(
+    internal ExprProgram(
         SyntaxTree syntaxTree,
         IEnumerable<ExprInstruction> instructions,
         IEnumerable<object?> constants,

@@ -301,82 +301,22 @@ public sealed class EvaluationSecurityTests
         Assert.Contains("maximum length", tooLong.Message, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(ExprOpcode.OpPop, 0, "stack underflow")]
-    [InlineData(ExprOpcode.OpJump, -1, "forward jump target")]
-    [InlineData(ExprOpcode.OpJumpBackward, 0, "backward jump target")]
-    [InlineData(ExprOpcode.OpTrue, 1, "unexpected operand")]
-    [InlineData(ExprOpcode.OpCast, int.MaxValue, "cast operand")]
-    [InlineData((ExprOpcode)255, 0, "unknown opcode")]
-    public void Malformed_public_bytecode_is_rejected_deterministically(
-        ExprOpcode opcode,
-        int argument,
-        string expected)
-    {
-        ExprProgram program = Program(new ExprInstruction(opcode, argument, new SourceLocation(0, 1)));
-
-        ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                program,
-                cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Malformed_source_ranges_and_unclosed_scopes_are_rejected()
-    {
-        ExprProgram invalidLocation = Program(
-            new ExprInstruction(ExprOpcode.OpInt, 1, new SourceLocation(0, 2)));
-        ExprExecutionException location = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                invalidLocation,
-                cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains("invalid source location", location.Message, StringComparison.Ordinal);
-
-        ExprProgram openScope = Program(
-            new ExprInstruction(ExprOpcode.OpPush, 0, new SourceLocation(0, 1)),
-            new ExprInstruction(ExprOpcode.OpBegin, 0, new SourceLocation(0, 1)),
-            new ExprInstruction(ExprOpcode.OpInt, 1, new SourceLocation(0, 1)),
-            constants: [new ExprArray([1L])]);
-        ExprExecutionException scope = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                openScope,
-                cancellationToken: TestContext.Current.CancellationToken));
-        Assert.Contains("open predicate scope", scope.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Stack_limit_is_enforced_before_operand_growth()
-    {
-        ExprProgram program = Program(
-            new ExprInstruction(ExprOpcode.OpInt, 1, new SourceLocation(0, 1)),
-            new ExprInstruction(ExprOpcode.OpInt, 2, new SourceLocation(0, 1)));
-
-        ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                program,
-                options: new ExprEvaluationOptions { MaximumStackDepth = 1 },
-                cancellationToken: TestContext.Current.CancellationToken));
-
-        Assert.Contains("stack depth exceeded", exception.Message, StringComparison.Ordinal);
-    }
-
     [Fact]
     public void Evaluation_diagnostics_do_not_invoke_or_disclose_host_stringification()
     {
         var hostile = new HostileDisplay();
-        ExprProgram program = Program(
-            [
-                new ExprInstruction(ExprOpcode.OpPush, 0, new SourceLocation(0, 1)),
-                new ExprInstruction(ExprOpcode.OpPush, 1, new SourceLocation(0, 1)),
-                new ExprInstruction(ExprOpcode.OpFetch, 0, new SourceLocation(0, 1)),
-            ],
-            [1L, hostile]);
+        var environment = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["target"] = 1L,
+            ["key"] = hostile,
+        };
+        CompiledExpression expression = ExprEngine.Compile(
+            "target[key]",
+            ExprConfiguration.Default.AllowUndefinedVariables().WithOptimization(false));
 
         ExprExecutionException exception = Assert.Throws<ExprExecutionException>(() =>
-            ExprEvaluator.Shared.Evaluate(
-                program,
+            expression.Run(
+                environment,
                 cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(0, hostile.StringificationAttempts);
@@ -388,40 +328,14 @@ public sealed class EvaluationSecurityTests
     public void Bytecode_disassembly_does_not_invoke_or_disclose_host_stringification()
     {
         var hostile = new HostileDisplay();
-        ExprProgram program = Program(
-            new ExprInstruction(ExprOpcode.OpPush, 0, new SourceLocation(0, 1)),
-            constants: [hostile]);
+        var tree = new SyntaxTree(new ConstantNode(hostile, new SourceLocation(0, 1)), new SourceText("0"));
+        CompiledExpression expression = ExprEngine.Compile(tree);
 
-        string disassembly = program.Disassemble();
+        string disassembly = expression.Program.Disassemble();
 
         Assert.Equal(0, hostile.StringificationAttempts);
         Assert.DoesNotContain(HostileDisplay.Secret, disassembly, StringComparison.Ordinal);
         Assert.Contains(typeof(HostileDisplay).FullName!, disassembly, StringComparison.Ordinal);
-    }
-
-    private static ExprProgram Program(
-        ExprInstruction instruction,
-        params ExprInstruction[] instructions) =>
-        Program([instruction, .. instructions], []);
-
-    private static ExprProgram Program(
-        ExprInstruction instruction,
-        IReadOnlyList<object?> constants) =>
-        Program([instruction], constants);
-
-    private static ExprProgram Program(
-        ExprInstruction first,
-        ExprInstruction second,
-        ExprInstruction third,
-        IReadOnlyList<object?> constants) =>
-        Program([first, second, third], constants);
-
-    private static ExprProgram Program(
-        IEnumerable<ExprInstruction> instructions,
-        IReadOnlyList<object?> constants)
-    {
-        SyntaxTree tree = new SyntaxParser().Parse("0");
-        return new ExprProgram(tree, instructions, constants, [], 0);
     }
 
     private sealed class HostileArray(int count) : IExprArray

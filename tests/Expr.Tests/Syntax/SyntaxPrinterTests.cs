@@ -281,10 +281,51 @@ public sealed class SyntaxPrinterTests
             new PairNode(new StringNode("key", location), new IntegerNode(1, location), location),
         };
 
-        var printed = nodes.Select(static node => SyntaxPrinter.Print(node)).ToArray();
+        var printed = nodes.Select(static node => node.ToString()).ToArray();
 
         Assert.Equal(23, printed.Length);
         Assert.All(printed, static value => Assert.NotEmpty(value));
+    }
+
+    [Fact]
+    public void Printer_options_and_consumer_nodes_reject_invalid_public_state()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxPrinterOptions { MaximumDepth = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SyntaxPrinterOptions { MaximumNodeCount = 0 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => SyntaxPrinter.Print(new UnsupportedNode(default)));
+        Assert.Throws<InvalidOperationException>(() => SyntaxPrinter.Print(
+            new UnaryNode("unknown", new NilNode(default), default)));
+    }
+
+    [Fact]
+    public void Printer_covers_every_public_constant_representation_and_failure()
+    {
+        object?[] values =
+        [
+            null, true, "\a\b\f\n\r\t\v\u0001", 'x', new byte[] { 7, 8, 12, 10, 13, 9, 11 },
+            new ReadOnlyMemory<byte>([1, 2]), (sbyte)1, (byte)1, (short)1, (ushort)1, 1, 1U, 1L, 1UL,
+            1F, 1D, 1M, new Dictionary<string, object?> { ["x"] = 1L }, new object?[] { 1L, "x" },
+        ];
+        foreach (object? value in values)
+        {
+            Assert.NotEmpty(SyntaxPrinter.Print(new ConstantNode(value, default)));
+        }
+
+        Assert.Throws<NotSupportedException>(() => SyntaxPrinter.Print(new StringNode("\ud800", default)));
+        Assert.Throws<NotSupportedException>(() => SyntaxPrinter.Print(new ConstantNode(ulong.MaxValue, default)));
+        Assert.Throws<NotSupportedException>(() => SyntaxPrinter.Print(new ConstantNode(float.NaN, default)));
+        Assert.Throws<NotSupportedException>(() => SyntaxPrinter.Print(new ConstantNode(double.PositiveInfinity, default)));
+        Assert.Throws<NotSupportedException>(() => SyntaxPrinter.Print(new ConstantNode(new object(), default)));
+        Assert.Throws<NotSupportedException>(() => SyntaxPrinter.Print(
+            new ConstantNode(new Dictionary<object, object?> { [1] = "x" }, default)));
+
+        object? nested = new object?[] { new object?[] { 1L } };
+        Assert.Throws<InvalidOperationException>(() => SyntaxPrinter.Print(
+            new ConstantNode(nested, default),
+            new SyntaxPrinterOptions { MaximumDepth = 2 }));
+        Assert.Throws<InvalidOperationException>(() => SyntaxPrinter.Print(
+            new ConstantNode(new object?[] { 1L, 2L }, default),
+            new SyntaxPrinterOptions { MaximumNodeCount = 2 }));
     }
 
     private static void AssertEquivalent(SyntaxNode expected, SyntaxNode actual)
@@ -411,4 +452,6 @@ public sealed class SyntaxPrinterTests
             AssertEquivalent(expected[index], actual[index]);
         }
     }
+
+    private sealed record UnsupportedNode(SourceLocation Location) : SyntaxNode(Location);
 }
