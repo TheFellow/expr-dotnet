@@ -81,6 +81,34 @@ public sealed class BuiltinSerializationAndTimeTests
     }
 
     [Fact]
+    public void Json_public_contract_covers_scalars_escapes_dates_and_invalid_maps()
+    {
+        var library = new ExprBuiltinLibrary();
+
+        Assert.Null(library.Get("fromJSON").Invoke(["null"]).Value);
+        Assert.Equal(true, library.Get("fromJSON").Invoke(["true"]).Value);
+        Assert.Equal(false, library.Get("fromJSON").Invoke(["false"]).Value);
+        Assert.Equal("text", library.Get("fromJSON").Invoke(["\"text\""]).Value);
+        Assert.Equal(
+            "\"\\b\\f\\n\\r\\t\\\"\\\\\\u0001\"",
+            library.Get("toJSON").Invoke(["\b\f\n\r\t\"\\\u0001"]).Value);
+
+        foreach (DateTimeKind kind in Enum.GetValues<DateTimeKind>())
+        {
+            var value = new DateTime(2024, 1, 2, 3, 4, 5, kind);
+            Assert.IsType<string>(library.Get("toJSON").Invoke([value]).Value);
+        }
+
+        var invalidMap = new Dictionary<object, object?> { [1L] = "value" };
+        Assert.Throws<ExprRuntimeException>(() => library.Get("toJSON").Invoke([invalidMap]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("fromJSON").Invoke(["{"]));
+
+        var shallow = new ExprBuiltinLibrary(new ExprBuiltinOptions { MaximumDepth = 1 });
+        Assert.Throws<ExprRuntimeException>(() => shallow.Get("toJSON").Invoke([new object?[] { new object?[] { 1L } }]));
+        Assert.Throws<ExprRuntimeException>(() => shallow.Get("fromJSON").Invoke(["[[1]]"]));
+    }
+
+    [Fact]
     public void Base64_is_utf8_and_reports_allocated_size()
     {
         var library = new ExprBuiltinLibrary();
@@ -117,6 +145,29 @@ public sealed class BuiltinSerializationAndTimeTests
         Assert.Throws<ExprRuntimeException>(() => library.Get("duration").Invoke(["999999999999999999999h"]));
     }
 
+    [Theory]
+    [InlineData("1ns")]
+    [InlineData("1µs")]
+    [InlineData("1μs")]
+    [InlineData("1ms")]
+    [InlineData("+1s")]
+    public void Duration_accepts_every_public_go_unit_spelling(string value)
+    {
+        var library = new ExprBuiltinLibrary();
+        Assert.IsType<TimeSpan>(library.Get("duration").Invoke([value]).Value);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("+")]
+    [InlineData("1..2s")]
+    [InlineData("1")]
+    public void Duration_rejects_structurally_invalid_public_inputs(string value)
+    {
+        var library = new ExprBuiltinLibrary();
+        Assert.Throws<ExprRuntimeException>(() => library.Get("duration").Invoke([value]));
+    }
+
     [Fact]
     public void Now_uses_injected_clock_and_timezone()
     {
@@ -130,6 +181,7 @@ public sealed class BuiltinSerializationAndTimeTests
 
         Assert.Equal(instant.ToOffset(TimeSpan.FromHours(2)), library.Get("now").Invoke([]).Value);
         Assert.Equal(instant, library.Get("now").Invoke([TimeZoneInfo.Utc]).Value);
+        Assert.Throws<ExprRuntimeException>(() => library.Get("now").Invoke([TimeZoneInfo.Utc, TimeZoneInfo.Utc]));
     }
 
     [Fact]
@@ -298,6 +350,20 @@ public sealed class BuiltinSerializationAndTimeTests
 
         Assert.Throws<ExprRuntimeException>(() =>
             library.Get("date").Invoke(["2024-02-28-060", "2006-01-02-002"]));
+    }
+
+    [Fact]
+    public void Date_rejects_invalid_public_arity_and_layout_shapes()
+    {
+        var library = new ExprBuiltinLibrary();
+
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke([]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke(["a", "b", "c", "d"]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke(["2024", "2006-01-02"]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke(["2024-13-01", "2006-01-02"]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke(["2023-02-29", "2006-01-02"]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke(["13:00 PM", "03:04 PM"]));
+        Assert.Throws<ExprRuntimeException>(() => library.Get("date").Invoke(["+24:00", "-07:00"]));
     }
 
     [Theory]

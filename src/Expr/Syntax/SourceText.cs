@@ -5,12 +5,60 @@ using System.Text;
 namespace Expr.Syntax;
 
 /// <summary>Identifies a half-open range of Unicode scalar values in source text.</summary>
-/// <param name="Start">The zero-based scalar offset at which the range starts.</param>
-/// <param name="End">The zero-based scalar offset immediately after the range.</param>
-public readonly record struct SourceLocation(int Start, int End)
+public readonly record struct SourceLocation
 {
+    private readonly int start;
+    private readonly int end;
+
+    /// <summary>Initializes a valid half-open source range.</summary>
+    public SourceLocation(int start, int end)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(start);
+        if (end < start)
+        {
+            throw new ArgumentOutOfRangeException(nameof(end), "The end of a source range cannot precede its start.");
+        }
+
+        this.start = start;
+        this.end = end;
+    }
+
+    /// <summary>Gets the zero-based scalar offset at which the range starts.</summary>
+    public int Start
+    {
+        get => start;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            if (value > end)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "The start of a source range cannot follow its end.");
+            }
+
+            start = value;
+        }
+    }
+
+    /// <summary>Gets the zero-based scalar offset immediately after the range.</summary>
+    public int End
+    {
+        get => end;
+        init
+        {
+            if (value < start)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "The end of a source range cannot precede its start.");
+            }
+
+            end = value;
+        }
+    }
+
     /// <summary>Gets the length of the range in Unicode scalar values.</summary>
     public int Length => End - Start;
+
+    /// <summary>Deconstructs the source range.</summary>
+    public void Deconstruct(out int start, out int end) => (start, end) = (Start, End);
 }
 
 /// <summary>Provides source text and line-oriented lookup using Expr-compatible Unicode positions.</summary>

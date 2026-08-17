@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Expr.Checking;
 using Expr.Configuration;
@@ -23,7 +24,13 @@ public static class ExprCompiler
         ExprCompilationOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(semanticModel);
-        ExprConfiguration effectiveConfiguration = configuration ?? ExprConfiguration.Default;
+        ExprConfiguration effectiveConfiguration = configuration ?? semanticModel.Configuration;
+        if (!ReferenceEquals(effectiveConfiguration, semanticModel.Configuration))
+        {
+            throw new ArgumentException(
+                "The compilation configuration must be the same instance used to check the semantic model.",
+                nameof(configuration));
+        }
         return new Compiler(
             semanticModel,
             effectiveConfiguration,
@@ -73,7 +80,7 @@ public static class ExprCompiler
                 OptimizeJumps();
             }
 
-            return new ExprProgram(
+            return ExprProgram.CreateCompiled(
                 semanticModel.SyntaxTree,
                 instructions.Select(static instruction => instruction.ToImmutable()),
                 constants,
@@ -174,9 +181,7 @@ public static class ExprCompiler
                         CompileValue(pair.Value);
                         break;
                     default:
-                        throw new ExprCompilationException(
-                            $"unsupported syntax node {node.GetType().Name}",
-                            node.Location);
+                        throw new UnreachableException($"The checker accepted unsupported syntax node {node.GetType().Name}.");
                 }
 
                 EndProfile(node, profilePoint);
@@ -261,7 +266,7 @@ public static class ExprCompiler
                     Emit(node, ExprOpcode.OpNegate);
                     break;
                 default:
-                    throw UnknownOperator(node.Operator, node.Location);
+                    throw new UnreachableException($"The checker accepted unknown unary operator {node.Operator}.");
             }
         }
 
@@ -316,7 +321,7 @@ public static class ExprCompiler
                 "startsWith" => ExprOpcode.OpStartsWith,
                 "endsWith" => ExprOpcode.OpEndsWith,
                 ".." => ExprOpcode.OpRange,
-                _ => throw UnknownOperator(node.Operator, node.Location),
+                _ => throw new UnreachableException($"The checker accepted unknown binary operator {node.Operator}."),
             });
         }
 
@@ -358,28 +363,9 @@ public static class ExprCompiler
 
         private void CompileConstantMatch(BinaryNode node, StringNode pattern)
         {
-            if (pattern.Value.Length > configuration.MaximumRegularExpressionLength)
-            {
-                throw new ExprCompilationException(
-                    $"regular expression exceeds configured maximum length of {configuration.MaximumRegularExpressionLength}",
-                    pattern.Location);
-            }
-
-            ExprRegularExpressionOperand expression;
-            try
-            {
-                expression = new ExprRegularExpressionOperand(
-                    pattern.Value,
-                    configuration.RegularExpressionTimeout);
-            }
-            catch (ArgumentException exception)
-            {
-                throw new ExprCompilationException(exception.Message, pattern.Location, exception);
-            }
-            catch (NotSupportedException exception)
-            {
-                throw new ExprCompilationException(exception.Message, pattern.Location, exception);
-            }
+            var expression = new ExprRegularExpressionOperand(
+                pattern.Value,
+                configuration.RegularExpressionTimeout);
 
             CompileValue(node.Left);
             Emit(node, ExprOpcode.OpMatchesConst, AddConstant(expression));
@@ -924,7 +910,7 @@ public static class ExprCompiler
                 "" => ExprOpcode.OpPointer,
                 "index" => ExprOpcode.OpGetIndex,
                 "acc" => ExprOpcode.OpGetAcc,
-                _ => throw new ExprCompilationException($"unknown pointer {node.Name}", node.Location),
+                _ => throw new UnreachableException($"The checker accepted unknown pointer {node.Name}."),
             });
         }
 
@@ -1019,7 +1005,7 @@ public static class ExprCompiler
                 return builtin;
             }
 
-            throw new ExprCompilationException($"unknown builtin {node.Name}", node.Location);
+            throw new UnreachableException($"The checker accepted unknown builtin {node.Name}.");
         }
 
         private bool IsUncheckedFastBuiltin(BuiltinNode node, ExprFunction function)
@@ -1241,9 +1227,6 @@ public static class ExprCompiler
 
             return new ExprMemberOperand(binding.Name, binding.Kind, binding.Member, environmentMember);
         }
-
-        private static ExprCompilationException UnknownOperator(string value, SourceLocation location) =>
-            new($"unknown operator ({value})", location);
 
         private bool ParentIsNilCoalescing() => nodes.Count > 1 &&
             nodes[^2] is BinaryNode { Operator: "??" };

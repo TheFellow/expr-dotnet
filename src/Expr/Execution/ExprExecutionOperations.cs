@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -278,7 +279,7 @@ internal static class ExprExecutionOperations
             return new ExprArray(result);
         }
 
-        throw Error($"cannot slice {Display(fromValue)}");
+        throw new UnreachableException("Slice allocation validation accepted an unsupported value.");
     }
 
     internal static ulong SliceAllocationCost(object? value, object? fromValue, object? toValue)
@@ -356,7 +357,7 @@ internal static class ExprExecutionOperations
         ExprCastKind.Integer or ExprCastKind.Integer64 => ExprValue.ToInt64(value),
         ExprCastKind.Float64 => ExprValue.ToDouble(value),
         ExprCastKind.Boolean => ExprValue.ToBoolean(value),
-        _ => throw Error("cast operand is invalid"),
+        _ => throw new UnreachableException("Compiler emitted an invalid cast operand."),
     };
 
     internal static ExprInvocationResult Invoke(object? callable, object?[] arguments)
@@ -448,7 +449,7 @@ internal static class ExprExecutionOperations
         PropertyInfo property when property.GetMethod is MethodInfo getter => InvokeMethod(target, getter, []),
         FieldInfo field => field.GetValue(target),
         MethodInfo method => new BoundMethod(target, method),
-        _ => throw Error($"cannot get {member.Name} from {TypeName(target)}"),
+        _ => throw new UnreachableException("Checker produced an unsupported CLR member binding."),
     };
 
     private static object?[] PrepareDelegateArguments(Delegate method, object?[] arguments)

@@ -25,10 +25,26 @@ public enum SyntaxTraversalOrder
 public sealed record SyntaxWalkerOptions
 {
     /// <summary>Gets or initializes the maximum nested syntax depth.</summary>
-    public int MaximumDepth { get; init; } = 65_536;
+    public int MaximumDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 65_536;
 
     /// <summary>Gets or initializes the maximum number of visited node occurrences.</summary>
-    public int MaximumNodeCount { get; init; } = 1_000_000;
+    public int MaximumNodeCount
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 1_000_000;
 }
 
 /// <summary>Walks and searches immutable Expr syntax trees without recursive stack growth.</summary>
@@ -102,17 +118,6 @@ public static class SyntaxWalker
         }
 
         var limits = options ?? new SyntaxWalkerOptions();
-        if (limits.MaximumDepth <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(options), "Maximum depth must be positive.");
-        }
-
-        if (limits.MaximumNodeCount <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(options), "Maximum node count must be positive.");
-        }
-
-        var path = new HashSet<SyntaxNode>(ReferenceEqualityComparer.Instance);
         var stack = new Stack<TraversalFrame>();
         var nodeCount = 0;
         stack.Push(new TraversalFrame(node, 0, false));
@@ -121,7 +126,6 @@ public static class SyntaxWalker
             var frame = stack.Pop();
             if (frame.Exiting)
             {
-                _ = path.Remove(frame.Node);
                 if (order == SyntaxTraversalOrder.PostOrder)
                 {
                     yield return frame.Node;
@@ -141,11 +145,6 @@ public static class SyntaxWalker
             {
                 throw new InvalidOperationException(
                     $"Syntax tree exceeds the configured walker node limit of {limits.MaximumNodeCount}.");
-            }
-
-            if (!path.Add(frame.Node))
-            {
-                throw new InvalidOperationException("Syntax tree contains a reference cycle.");
             }
 
             stack.Push(frame with { Exiting = true });
@@ -313,7 +312,15 @@ public static class SyntaxWalker
 public abstract class SyntaxRewriter
 {
     /// <summary>Gets or initializes the maximum tree depth accepted by this rewriter.</summary>
-    public int MaximumDepth { get; init; } = 1_024;
+    public int MaximumDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 1_024;
 
     /// <summary>Recursively rewrites a node and its children.</summary>
     /// <param name="node">The node to rewrite.</param>
@@ -321,11 +328,6 @@ public abstract class SyntaxRewriter
     public SyntaxNode Visit(SyntaxNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        if (MaximumDepth <= 0)
-        {
-            throw new InvalidOperationException("Syntax rewriter maximum depth must be positive.");
-        }
-
         return VisitCore(node, 0);
     }
 

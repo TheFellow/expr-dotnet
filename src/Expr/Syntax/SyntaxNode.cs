@@ -22,6 +22,19 @@ public sealed record NilNode(SourceLocation Location) : SyntaxNode(Location)
 /// <param name="Location">The source location.</param>
 public sealed record IdentifierNode(string Name, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the identifier name.</summary>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrEmpty(value);
+            field = value;
+        }
+    } = !string.IsNullOrEmpty(Name)
+        ? Name
+        : throw new ArgumentException("An identifier name cannot be empty.", nameof(Name));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -58,6 +71,17 @@ public sealed record BooleanNode(bool Value, SourceLocation Location) : SyntaxNo
 /// <param name="Location">The source location.</param>
 public sealed record StringNode(string Value, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the decoded string value.</summary>
+    public string Value
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Value ?? throw new ArgumentNullException(nameof(Value));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -98,6 +122,30 @@ public sealed record ConstantNode(object? Value, SourceLocation Location) : Synt
 /// <param name="Location">The operator source location.</param>
 public sealed record UnaryNode(string Operator, SyntaxNode Operand, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the operator spelling.</summary>
+    public string Operator
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrEmpty(value);
+            field = value;
+        }
+    } = !string.IsNullOrEmpty(Operator)
+        ? Operator
+        : throw new ArgumentException("An operator cannot be empty.", nameof(Operator));
+
+    /// <summary>Gets the operand.</summary>
+    public SyntaxNode Operand
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Operand ?? throw new ArgumentNullException(nameof(Operand));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -109,6 +157,41 @@ public sealed record UnaryNode(string Operator, SyntaxNode Operand, SourceLocati
 /// <param name="Location">The operator source location.</param>
 public sealed record BinaryNode(string Operator, SyntaxNode Left, SyntaxNode Right, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the operator spelling.</summary>
+    public string Operator
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrEmpty(value);
+            field = value;
+        }
+    } = !string.IsNullOrEmpty(Operator)
+        ? Operator
+        : throw new ArgumentException("An operator cannot be empty.", nameof(Operator));
+
+    /// <summary>Gets the left operand.</summary>
+    public SyntaxNode Left
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Left ?? throw new ArgumentNullException(nameof(Left));
+
+    /// <summary>Gets the right operand.</summary>
+    public SyntaxNode Right
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Right ?? throw new ArgumentNullException(nameof(Right));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -118,6 +201,17 @@ public sealed record BinaryNode(string Operator, SyntaxNode Left, SyntaxNode Rig
 /// <param name="Location">The source location.</param>
 public sealed record ChainNode(SyntaxNode Expression, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the grouped expression.</summary>
+    public SyntaxNode Expression
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Expression ?? throw new ArgumentNullException(nameof(Expression));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -135,6 +229,28 @@ public sealed record MemberNode(
     bool IsMethod,
     SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the value being accessed.</summary>
+    public SyntaxNode Target
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Target ?? throw new ArgumentNullException(nameof(Target));
+
+    /// <summary>Gets the property name or index expression.</summary>
+    public SyntaxNode Property
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Property ?? throw new ArgumentNullException(nameof(Property));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -150,6 +266,17 @@ public sealed record SliceNode(
     SyntaxNode? To,
     SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the value being sliced.</summary>
+    public SyntaxNode Target
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Target ?? throw new ArgumentNullException(nameof(Target));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -164,6 +291,7 @@ public sealed record CallNode : SyntaxNode
     public CallNode(SyntaxNode callee, IEnumerable<SyntaxNode> arguments, SourceLocation location)
         : base(location)
     {
+        ArgumentNullException.ThrowIfNull(callee);
         Callee = callee;
         Arguments = SyntaxCollections.Copy(arguments);
     }
@@ -185,9 +313,15 @@ public sealed record BuiltinNode : SyntaxNode
     /// <param name="name">The built-in name.</param>
     /// <param name="arguments">The call arguments.</param>
     /// <param name="location">The source location.</param>
-    /// <param name="throws">Whether optimizer-generated access can throw.</param>
-    /// <param name="map">An optional optimizer-generated map expression.</param>
-    /// <param name="threshold">An optional optimizer-generated threshold.</param>
+    public BuiltinNode(
+        string name,
+        IEnumerable<SyntaxNode> arguments,
+        SourceLocation location)
+        : this(name, arguments, location, false, null, null)
+    {
+    }
+
+    /// <summary>Initializes a built-in call node with optimizer metadata.</summary>
     public BuiltinNode(
         string name,
         IEnumerable<SyntaxNode> arguments,
@@ -197,6 +331,27 @@ public sealed record BuiltinNode : SyntaxNode
         int? threshold = null)
         : base(location)
     {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        if (threshold <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(threshold), "An optimizer threshold must be positive.");
+        }
+
+        if (throws && name is not ("find" or "findLast"))
+        {
+            throw new ArgumentException("Only find built-ins can carry throwing lookup metadata.", nameof(throws));
+        }
+
+        if (map is not null && name is not ("filter" or "find" or "findLast"))
+        {
+            throw new ArgumentException("Only filter and find built-ins can carry a mapped result.", nameof(map));
+        }
+
+        if (threshold is not null && name is not "count")
+        {
+            throw new ArgumentException("Only count can carry an optimizer threshold.", nameof(threshold));
+        }
+
         Name = name;
         Arguments = SyntaxCollections.Copy(arguments);
         Throws = throws;
@@ -228,6 +383,17 @@ public sealed record BuiltinNode : SyntaxNode
 /// <param name="Location">The predicate source location.</param>
 public sealed record PredicateNode(SyntaxNode Body, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the predicate body.</summary>
+    public SyntaxNode Body
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Body ?? throw new ArgumentNullException(nameof(Body));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -237,6 +403,17 @@ public sealed record PredicateNode(SyntaxNode Body, SourceLocation Location) : S
 /// <param name="Location">The pointer source location.</param>
 public sealed record PointerNode(string Name, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the pointer name.</summary>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Name ?? throw new ArgumentNullException(nameof(Name));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -254,6 +431,39 @@ public sealed record ConditionalNode(
     bool IsTernary,
     SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the condition.</summary>
+    public SyntaxNode Condition
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Condition ?? throw new ArgumentNullException(nameof(Condition));
+
+    /// <summary>Gets the expression evaluated when true.</summary>
+    public SyntaxNode WhenTrue
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = WhenTrue ?? throw new ArgumentNullException(nameof(WhenTrue));
+
+    /// <summary>Gets the expression evaluated when false.</summary>
+    public SyntaxNode WhenFalse
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = WhenFalse ?? throw new ArgumentNullException(nameof(WhenFalse));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -269,6 +479,41 @@ public sealed record VariableDeclaratorNode(
     SyntaxNode Body,
     SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the variable name.</summary>
+    public string Name
+    {
+        get;
+        init
+        {
+            ArgumentException.ThrowIfNullOrEmpty(value);
+            field = value;
+        }
+    } = !string.IsNullOrEmpty(Name)
+        ? Name
+        : throw new ArgumentException("A variable name cannot be empty.", nameof(Name));
+
+    /// <summary>Gets the bound value.</summary>
+    public SyntaxNode Value
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Value ?? throw new ArgumentNullException(nameof(Value));
+
+    /// <summary>Gets the expression in which the variable is bound.</summary>
+    public SyntaxNode Body
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Body ?? throw new ArgumentNullException(nameof(Body));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -280,7 +525,14 @@ public sealed record SequenceNode : SyntaxNode
     /// <param name="expressions">The sequence expressions.</param>
     /// <param name="location">The source location.</param>
     public SequenceNode(IEnumerable<SyntaxNode> expressions, SourceLocation location)
-        : base(location) => Expressions = SyntaxCollections.Copy(expressions);
+        : base(location)
+    {
+        Expressions = SyntaxCollections.Copy(expressions);
+        if (Expressions.Count == 0)
+        {
+            throw new ArgumentException("A sequence must contain at least one expression.", nameof(expressions));
+        }
+    }
 
     /// <summary>Gets the sequence expressions.</summary>
     public IReadOnlyList<SyntaxNode> Expressions { get; }
@@ -327,6 +579,28 @@ public sealed record MapNode : SyntaxNode
 /// <param name="Location">The map opening-brace source location.</param>
 public sealed record PairNode(SyntaxNode Key, SyntaxNode Value, SourceLocation Location) : SyntaxNode(Location)
 {
+    /// <summary>Gets the key expression.</summary>
+    public SyntaxNode Key
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Key ?? throw new ArgumentNullException(nameof(Key));
+
+    /// <summary>Gets the value expression.</summary>
+    public SyntaxNode Value
+    {
+        get;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            field = value;
+        }
+    } = Value ?? throw new ArgumentNullException(nameof(Value));
+
     /// <inheritdoc />
     public override string ToString() => SyntaxPrinter.Print(this);
 }
@@ -334,8 +608,15 @@ public sealed record PairNode(SyntaxNode Key, SyntaxNode Value, SourceLocation L
 internal static class SyntaxCollections
 {
     internal static IReadOnlyList<T> Copy<T>(IEnumerable<T> values)
+        where T : class
     {
         ArgumentNullException.ThrowIfNull(values);
-        return new ReadOnlyCollection<T>(values.ToArray());
+        var copy = values.ToArray();
+        if (Array.IndexOf(copy, null) >= 0)
+        {
+            throw new ArgumentException("Syntax collections cannot contain null elements.", nameof(values));
+        }
+
+        return new ReadOnlyCollection<T>(copy);
     }
 }

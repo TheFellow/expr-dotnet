@@ -71,18 +71,18 @@ internal sealed class ExprExecutionMachine
 
             if (scopes?.Count is > 0)
             {
-                throw Error("program ended with an open predicate scope");
+                throw new UnreachableException("Compiler emitted an unclosed predicate scope.");
             }
 
             if (activeProfiles?.Count is > 0)
             {
-                throw Error("program ended with an open profile scope");
+                throw new UnreachableException("Compiler emitted an unclosed profile scope.");
             }
 
             if (stack.Count is not 1)
             {
-                throw Error(
-                    $"program ended with an invalid stack depth of {stack.Count.ToString(CultureInfo.InvariantCulture)}");
+                throw new UnreachableException(
+                    $"Compiler emitted a program with final stack depth {stack.Count.ToString(CultureInfo.InvariantCulture)}.");
             }
 
             return Pop();
@@ -92,6 +92,10 @@ internal sealed class ExprExecutionMachine
             throw;
         }
         catch (ExprExecutionException)
+        {
+            throw;
+        }
+        catch (UnreachableException)
         {
             throw;
         }
@@ -113,7 +117,7 @@ internal sealed class ExprExecutionMachine
         switch (instruction.Opcode)
         {
             case ExprOpcode.OpInvalid:
-                throw Error("invalid opcode");
+                throw new UnreachableException("Compiler emitted an invalid opcode.");
             case ExprOpcode.OpPush:
                 Push(program.Constants[argument]);
                 break;
@@ -427,7 +431,7 @@ internal sealed class ExprExecutionMachine
                 EndScope();
                 break;
             default:
-                throw Error("unknown opcode");
+                throw new UnreachableException("Compiler emitted an unknown opcode.");
         }
     }
 
@@ -494,7 +498,7 @@ internal sealed class ExprExecutionMachine
         {
             if (callable is not ExprFunction function)
             {
-                throw Error("safe call target is not an Expr function");
+                throw new UnreachableException("Compiler emitted a safe call for a non-function.");
             }
 
             EnsureMemoryAvailable(function.EstimateMemoryCost(arguments));
@@ -545,7 +549,7 @@ internal sealed class ExprExecutionMachine
             object? keyValue = values[index];
             if (keyValue is not string key)
             {
-                throw Error($"cannot use {keyValue?.GetType().FullName ?? "nil"} as a map key");
+                throw new UnreachableException("Checker accepted a non-string map key.");
             }
 
             int existing = entries.FindIndex(entry => ExprValue.Equal(entry.Key, key));
@@ -587,7 +591,7 @@ internal sealed class ExprExecutionMachine
         object? key = Pop();
         if (scope.Accumulator is not GroupAccumulator accumulator)
         {
-            throw Error("groupBy accumulator is corrupt");
+            throw new UnreachableException("Compiler emitted groupBy with the wrong accumulator.");
         }
 
         accumulator.Add(key, scope.Item());
@@ -599,7 +603,7 @@ internal sealed class ExprExecutionMachine
         object? key = Pop();
         if (scope.Accumulator is not SortAccumulator accumulator)
         {
-            throw Error("sortBy accumulator is corrupt");
+            throw new UnreachableException("Compiler emitted sortBy with the wrong accumulator.");
         }
 
         accumulator.Add(scope.Item(), key);
@@ -609,7 +613,7 @@ internal sealed class ExprExecutionMachine
     {
         if (CurrentScope().Accumulator is not SortAccumulator accumulator)
         {
-            throw Error("sortBy accumulator is corrupt");
+            throw new UnreachableException("Compiler emitted sort with the wrong accumulator.");
         }
 
         ChargeMemory((ulong)accumulator.Count);
@@ -660,7 +664,7 @@ internal sealed class ExprExecutionMachine
     {
         if (scopes is null || scopes.Count is 0)
         {
-            throw Error("predicate scope underflow");
+            throw new UnreachableException("Compiler emitted an unmatched predicate scope end.");
         }
 
         scopes.RemoveAt(scopes.Count - 1);
@@ -685,7 +689,7 @@ internal sealed class ExprExecutionMachine
             !activeProfiles.TryPop(out ActiveProfile active) ||
             active.Point.Id != point.Id)
         {
-            throw Error("profile scope is corrupt");
+            throw new UnreachableException("Compiler emitted mismatched profile points.");
         }
 
         if (!options.EnableProfiling)
@@ -769,7 +773,7 @@ internal sealed class ExprExecutionMachine
     {
         if (count < 0 || stack.Count < count)
         {
-            throw Error("stack underflow");
+            throw new UnreachableException("Compiler emitted an instruction with insufficient stack operands.");
         }
     }
 
@@ -777,7 +781,7 @@ internal sealed class ExprExecutionMachine
     {
         if (scopes is null || scopes.Count is 0)
         {
-            throw Error("predicate scope underflow");
+            throw new UnreachableException("Compiler emitted a predicate operation outside a scope.");
         }
 
         return scopes[^1];
@@ -816,7 +820,7 @@ internal sealed class ExprExecutionMachine
     }
 
     private T Constant<T>(int index) where T : class =>
-        program.Constants[index] as T ?? throw Error("constant operand has an invalid type");
+        program.Constants[index] as T ?? throw new UnreachableException("Compiler emitted a constant operand with the wrong type.");
 
     private int CheckedCollectionSize(object? value)
     {

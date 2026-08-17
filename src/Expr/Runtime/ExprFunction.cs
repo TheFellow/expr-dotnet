@@ -45,7 +45,13 @@ public sealed record ExprFunctionOverload
         bool isVariadic = false)
     {
         ArgumentNullException.ThrowIfNull(parameters);
-        Parameters = Array.AsReadOnly(parameters.ToArray());
+        ExprTypeDescriptor[] parameterSnapshot = [.. parameters];
+        if (Array.IndexOf(parameterSnapshot, null) >= 0)
+        {
+            throw new ArgumentException("Function parameter types cannot contain null.", nameof(parameters));
+        }
+
+        Parameters = Array.AsReadOnly(parameterSnapshot);
         ReturnType = returnType ?? throw new ArgumentNullException(nameof(returnType));
         IsVariadic = isVariadic;
         if (isVariadic && Parameters.Count is 0)
@@ -119,6 +125,11 @@ public sealed class ExprFunction
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(overloads);
         ExprFunctionOverload[] overloadSnapshot = [.. overloads];
+        if (Array.IndexOf(overloadSnapshot, null) >= 0)
+        {
+            throw new ArgumentException("Function overloads cannot contain null.", nameof(overloads));
+        }
+
         if (overloadSnapshot.Length is 0 && typeValidator is null)
         {
             throw new ArgumentException("At least one overload or a type validator is required.", nameof(overloads));

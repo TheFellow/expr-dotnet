@@ -9,17 +9,11 @@ internal static class ExprProgramValidator
 {
     private const int MaximumCallArguments = 65_536;
 
-    internal static void Validate(ExprProgram program, ExprEvaluationOptions options)
+    internal static void Validate(ExprProgram program)
     {
-        ValidateOptions(options);
         if (program.Instructions.Count is 0)
         {
             Fail(program, -1, default, "program contains no instructions");
-        }
-
-        if (program.VariableCount > options.MaximumStackDepth)
-        {
-            Fail(program, -1, default, "program local-variable count exceeds the configured limit");
         }
 
         int sourceLength = 0;
@@ -32,30 +26,12 @@ internal static class ExprProgramValidator
         {
             ExprInstruction instruction = program.Instructions[index];
             SourceLocation location = instruction.Location;
-            if (location.Start < 0 || location.End < location.Start || location.End > sourceLength)
+            if (location.End > sourceLength)
             {
                 Fail(program, index, default, "instruction contains an invalid source location");
             }
 
             ValidateInstruction(program, index, instruction);
-        }
-    }
-
-    private static void ValidateOptions(ExprEvaluationOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        if (options.WorkBudget is 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(options), "WorkBudget must be positive.");
-        }
-
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumStackDepth);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumScopeDepth);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumCollectionLength);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumRegularExpressionLength);
-        if (options.RegularExpressionTimeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(options), "RegularExpressionTimeout must be positive.");
         }
     }
 
@@ -84,6 +60,7 @@ internal static class ExprProgramValidator
 
                 return;
             case ExprOpcode.OpLoadConst:
+            case ExprOpcode.OpLoadFast:
                 RequireConstant(program, index, instruction, typeof(string));
                 return;
             case ExprOpcode.OpLoadField:
@@ -91,9 +68,6 @@ internal static class ExprProgramValidator
             case ExprOpcode.OpFetchField:
             case ExprOpcode.OpMethod:
                 RequireConstant(program, index, instruction, typeof(ExprMemberOperand));
-                return;
-            case ExprOpcode.OpLoadFast:
-                RequireConstant(program, index, instruction, typeof(string));
                 return;
             case ExprOpcode.OpLoadFunc:
             case ExprOpcode.OpCall0:

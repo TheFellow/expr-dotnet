@@ -426,9 +426,7 @@ public sealed class SyntaxLexer
                 case '\\': decoded = new Rune('\\'); break;
                 case '\'': decoded = new Rune('\''); break;
                 case '"': decoded = new Rune('"'); break;
-                case '`': decoded = new Rune('`'); break;
-                case '?': decoded = new Rune('?'); break;
-                case 'x' or 'X':
+                case 'x':
                     decoded = new Rune(ReadEscape(contentRunes, ref index, 2, 16));
                     break;
                 case >= '0' and <= '3':
@@ -472,8 +470,7 @@ public sealed class SyntaxLexer
 
                     break;
                 default:
-                    Fail("unable to unescape string");
-                    return default;
+                    throw new InvalidOperationException("The validated string contains an unsupported escape.");
             }
 
             Append(decoded, bytes, result, bytesResult, rawByte: bytes && escape is 'x' or 'X' or >= '0' and <= '3');

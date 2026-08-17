@@ -41,6 +41,30 @@ public sealed class LexerTests
     }
 
     [Fact]
+    public void Decodes_every_public_string_escape_form()
+    {
+        const string source = "\"\\a\\b\\f\\r\\v\\\"\\141\\u0042\\U00000043\\u{44}\" '\\''";
+
+        SyntaxToken[] tokens = [.. new SyntaxLexer().Lex(source).Where(static item => item.Kind is TokenKind.String)];
+
+        Assert.Equal("\a\b\f\r\v\"aBCD", tokens[0].Value);
+        Assert.Equal("'", tokens[1].Value);
+    }
+
+    [Theory]
+    [InlineData("\"\\u{}\"")]
+    [InlineData("\"\\u{1234567}\"")]
+    [InlineData("\"\\u{110000}\"")]
+    [InlineData("\"\\u{1234\"")]
+    [InlineData("\"\\UFFFFFFFF\"")]
+    public void Rejects_invalid_unicode_escape_forms(string source)
+    {
+        SyntaxException exception = Assert.Throws<SyntaxException>(() => new SyntaxLexer().Lex(source));
+
+        Assert.Contains("escape", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Skips_comments_and_recognizes_word_operators()
     {
         const string source = "foo // line\n not   in bar /* block */ and baz";

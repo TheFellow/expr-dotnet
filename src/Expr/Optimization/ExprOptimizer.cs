@@ -26,7 +26,13 @@ public static class ExprOptimizer
     public static ExprSemanticModel Optimize(ExprSemanticModel model, ExprConfiguration? configuration = null)
     {
         ArgumentNullException.ThrowIfNull(model);
-        ExprConfiguration effectiveConfiguration = configuration ?? ExprConfiguration.Default;
+        ExprConfiguration effectiveConfiguration = configuration ?? model.Configuration;
+        if (!ReferenceEquals(effectiveConfiguration, model.Configuration))
+        {
+            throw new ArgumentException(
+                "The optimization configuration must be the same instance used to check the semantic model.",
+                nameof(configuration));
+        }
         if (!effectiveConfiguration.Optimize)
         {
             return model;
@@ -115,7 +121,7 @@ public static class ExprOptimizer
         var generated = new GeneratedSemanticsCollector(annotations);
         SyntaxWalker.Walk(optimized.SyntaxTree.Root, generated);
         return collector.Added || generated.Changed
-            ? new ExprSemanticModel(optimized.SyntaxTree, annotations)
+            ? new ExprSemanticModel(optimized.SyntaxTree, annotations, optimized.Configuration)
             : optimized;
     }
 

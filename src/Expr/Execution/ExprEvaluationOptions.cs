@@ -13,22 +13,74 @@ public sealed record ExprEvaluationOptions
     public ulong MemoryBudget { get; init; } = ExprConfiguration.DefaultMemoryBudget;
 
     /// <summary>Gets or initializes the maximum number of executed instructions.</summary>
-    public ulong WorkBudget { get; init; } = DefaultWorkBudget;
+    public ulong WorkBudget
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfZero(value);
+            field = value;
+        }
+    } = DefaultWorkBudget;
 
     /// <summary>Gets or initializes the maximum operand-stack depth.</summary>
-    public int MaximumStackDepth { get; init; } = 65_536;
+    public int MaximumStackDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 65_536;
 
     /// <summary>Gets or initializes the maximum nested predicate-scope depth.</summary>
-    public int MaximumScopeDepth { get; init; } = 1_024;
+    public int MaximumScopeDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 1_024;
 
     /// <summary>Gets or initializes the maximum size of a collection created by bytecode.</summary>
-    public int MaximumCollectionLength { get; init; } = 1_000_000;
+    public int MaximumCollectionLength
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 1_000_000;
 
     /// <summary>Gets or initializes the maximum dynamic regular-expression pattern length.</summary>
-    public int MaximumRegularExpressionLength { get; init; } = 16_384;
+    public int MaximumRegularExpressionLength
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 16_384;
 
     /// <summary>Gets or initializes the timeout for dynamic regular expressions.</summary>
-    public TimeSpan RegularExpressionTimeout { get; init; } = TimeSpan.FromMilliseconds(250);
+    public TimeSpan RegularExpressionTimeout
+    {
+        get;
+        init
+        {
+            if (value <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value), "The regular-expression timeout must be positive.");
+            }
+
+            field = value;
+        }
+    } = TimeSpan.FromMilliseconds(250);
 
     /// <summary>Gets or initializes whether profile boundary instructions collect timings.</summary>
     public bool EnableProfiling { get; init; }

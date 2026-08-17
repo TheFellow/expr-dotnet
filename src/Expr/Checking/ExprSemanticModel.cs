@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Reflection;
+using Expr.Configuration;
 using Expr.Runtime;
 using Expr.Syntax;
 using Expr.Types;
@@ -25,36 +27,217 @@ public enum ExprMemberBindingKind
 }
 
 /// <summary>Describes a statically selected member without mutating its syntax node.</summary>
-/// <param name="Name">The expression-visible name.</param>
-/// <param name="Kind">The binding kind.</param>
-/// <param name="Member">The cached CLR member, when reflection supplied the binding.</param>
-public sealed record ExprMemberBinding(string Name, ExprMemberBindingKind Kind, MemberInfo? Member = null);
+public sealed record ExprMemberBinding
+{
+    private string name = string.Empty;
+    private ExprMemberBindingKind kind;
+    private MemberInfo? member;
+
+    /// <summary>Initializes a member binding.</summary>
+    public ExprMemberBinding(string name, ExprMemberBindingKind kind, MemberInfo? member = null)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown member binding kind.");
+        }
+
+        if (kind is ExprMemberBindingKind.ClrMember or ExprMemberBindingKind.ClrMethod && member is null)
+        {
+            throw new ArgumentException("CLR member bindings require reflection metadata.", nameof(member));
+        }
+
+        if (kind is not (ExprMemberBindingKind.ClrMember or ExprMemberBindingKind.ClrMethod) && member is not null)
+        {
+            throw new ArgumentException("Only CLR member bindings can carry reflection metadata.", nameof(member));
+        }
+
+        Validate(name, kind, member);
+        this.name = name;
+        this.kind = kind;
+        this.member = member;
+    }
+
+    /// <summary>Gets the expression-visible name.</summary>
+    public string Name
+    {
+        get => name;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            name = value;
+        }
+    }
+
+    /// <summary>Gets the binding kind.</summary>
+    public ExprMemberBindingKind Kind
+    {
+        get => kind;
+        init
+        {
+            Validate(name, value, member);
+            kind = value;
+        }
+    }
+
+    /// <summary>Gets the cached CLR member, when reflection supplied the binding.</summary>
+    public MemberInfo? Member
+    {
+        get => member;
+        init
+        {
+            Validate(name, kind, value);
+            member = value;
+        }
+    }
+
+    /// <summary>Deconstructs the binding.</summary>
+    public void Deconstruct(out string name, out ExprMemberBindingKind kind, out MemberInfo? member) =>
+        (name, kind, member) = (Name, Kind, Member);
+
+    private static void Validate(string name, ExprMemberBindingKind kind, MemberInfo? member)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown member binding kind.");
+        }
+
+        if (kind is ExprMemberBindingKind.ClrMember or ExprMemberBindingKind.ClrMethod && member is null)
+        {
+            throw new ArgumentException("CLR member bindings require reflection metadata.", nameof(member));
+        }
+
+        if (kind is not (ExprMemberBindingKind.ClrMember or ExprMemberBindingKind.ClrMethod) && member is not null)
+        {
+            throw new ArgumentException("Only CLR member bindings can carry reflection metadata.", nameof(member));
+        }
+    }
+}
 
 /// <summary>Marks a value that must be unwrapped through <see cref="Patching.IExprValueProvider"/> before use.</summary>
-/// <param name="ValueType">The statically declared unwrapped type.</param>
-public sealed record ExprValueConversionBinding(ExprTypeDescriptor ValueType);
+public sealed record ExprValueConversionBinding
+{
+    /// <summary>Initializes a value-conversion binding.</summary>
+    public ExprValueConversionBinding(ExprTypeDescriptor valueType) =>
+        ValueType = valueType ?? throw new ArgumentNullException(nameof(valueType));
+
+    /// <summary>Gets the statically declared unwrapped type.</summary>
+    public ExprTypeDescriptor ValueType
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Deconstructs the binding.</summary>
+    public void Deconstruct(out ExprTypeDescriptor valueType) => valueType = ValueType;
+}
 
 /// <summary>Contains static information inferred for one syntax node.</summary>
-/// <param name="Type">The inferred result type.</param>
-/// <param name="Function">The selected host or built-in function.</param>
-/// <param name="Overload">The selected function overload.</param>
-/// <param name="Member">The selected member binding.</param>
-/// <param name="ValueConversion">The configured host-value conversion, when present.</param>
-public sealed record ExprNodeSemantics(
-    ExprTypeDescriptor Type,
-    ExprFunction? Function = null,
-    ExprFunctionOverload? Overload = null,
-    ExprMemberBinding? Member = null,
-    ExprValueConversionBinding? ValueConversion = null);
+public sealed record ExprNodeSemantics
+{
+    /// <summary>Initializes checked semantics for one node.</summary>
+    public ExprNodeSemantics(
+        ExprTypeDescriptor type,
+        ExprFunction? function = null,
+        ExprFunctionOverload? overload = null,
+        ExprMemberBinding? member = null,
+        ExprValueConversionBinding? valueConversion = null)
+    {
+        Type = type ?? throw new ArgumentNullException(nameof(type));
+        if (overload is not null)
+        {
+            if (function is null)
+            {
+                throw new ArgumentException("An overload cannot be selected without a function.", nameof(overload));
+            }
+
+            if (!function.Overloads.Contains(overload))
+            {
+                throw new ArgumentException("The selected overload does not belong to the selected function.", nameof(overload));
+            }
+        }
+
+        Function = function;
+        Overload = overload;
+        Member = member;
+        ValueConversion = valueConversion;
+    }
+
+    /// <summary>Gets the inferred result type.</summary>
+    public ExprTypeDescriptor Type
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Gets the selected function.</summary>
+    public ExprFunction? Function
+    {
+        get;
+        init
+        {
+            ValidateSelection(value, Overload);
+            field = value;
+        }
+    }
+
+    /// <summary>Gets the selected function overload.</summary>
+    public ExprFunctionOverload? Overload
+    {
+        get;
+        init
+        {
+            ValidateSelection(Function, value);
+            field = value;
+        }
+    }
+
+    /// <summary>Gets the selected member binding.</summary>
+    public ExprMemberBinding? Member { get; init; }
+
+    /// <summary>Gets the configured host-value conversion.</summary>
+    public ExprValueConversionBinding? ValueConversion { get; init; }
+
+    /// <summary>Deconstructs the inferred semantics.</summary>
+    public void Deconstruct(
+        out ExprTypeDescriptor type,
+        out ExprFunction? function,
+        out ExprFunctionOverload? overload,
+        out ExprMemberBinding? member,
+        out ExprValueConversionBinding? valueConversion) =>
+        (type, function, overload, member, valueConversion) =
+            (Type, Function, Overload, Member, ValueConversion);
+
+    private static void ValidateSelection(ExprFunction? function, ExprFunctionOverload? overload)
+    {
+        if (overload is null)
+        {
+            return;
+        }
+
+        if (function is null)
+        {
+            throw new ArgumentException("An overload cannot be selected without a function.", nameof(overload));
+        }
+
+        if (!function.Overloads.Contains(overload))
+        {
+            throw new ArgumentException("The selected overload does not belong to the selected function.", nameof(overload));
+        }
+    }
+}
 
 /// <summary>Provides immutable, reference-identity semantic annotations over an immutable syntax tree.</summary>
 public sealed class ExprSemanticModel
 {
     internal ExprSemanticModel(
         SyntaxTree syntaxTree,
-        IReadOnlyDictionary<SyntaxNode, ExprNodeSemantics> annotations)
+        IReadOnlyDictionary<SyntaxNode, ExprNodeSemantics> annotations,
+        ExprConfiguration configuration)
     {
-        SyntaxTree = syntaxTree;
+        SyntaxTree = syntaxTree ?? throw new ArgumentNullException(nameof(syntaxTree));
+        Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         var copy = new Dictionary<SyntaxNode, ExprNodeSemantics>(ReferenceEqualityComparer.Instance);
         foreach ((SyntaxNode node, ExprNodeSemantics semantics) in annotations)
         {
@@ -67,6 +250,9 @@ public sealed class ExprSemanticModel
 
     /// <summary>Gets the checked, possibly semantically patched syntax tree.</summary>
     public SyntaxTree SyntaxTree { get; }
+
+    /// <summary>Gets the immutable configuration under which this model was checked.</summary>
+    public ExprConfiguration Configuration { get; }
 
     /// <summary>Gets the root expression type.</summary>
     public ExprTypeDescriptor ResultType { get; }

@@ -23,7 +23,6 @@ public sealed class ExprBuiltinLibrary
     public ExprBuiltinLibrary(ExprBuiltinOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
-        Options.Validate();
         IReadOnlyList<ExprFunction> functions = ExprBuiltinDefinitions.Create(this);
         Functions = functions;
         functionsByName = new ReadOnlyDictionary<string, ExprFunction>(

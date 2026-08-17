@@ -32,29 +32,6 @@ public sealed class OpcodeExecutionTests
     }
 
     [Fact]
-    public void Direct_fast_and_dynamic_call_opcodes_execute_delegates()
-    {
-        var increment = new Func<long, long>(static value => value + 1);
-        ExprProgram fast = Program(
-            [
-                (ExprOpcode.OpPush, 0),
-                (ExprOpcode.OpPush, 1),
-                (ExprOpcode.OpCallFast, 1),
-            ],
-            [41L, increment]);
-        ExprProgram dynamic = Program(
-            [
-                (ExprOpcode.OpPush, 0),
-                (ExprOpcode.OpPush, 1),
-                (ExprOpcode.OpCall, 1),
-            ],
-            [41L, increment]);
-
-        Assert.Equal(42L, Run(fast));
-        Assert.Equal(42L, Run(dynamic));
-    }
-
-    [Fact]
     public void Root_environment_loads_static_members_methods_and_the_environment_itself()
     {
         var environment = new RootEnvironment(40L);
@@ -72,14 +49,16 @@ public sealed class OpcodeExecutionTests
     public void Dynamic_fetch_supports_negative_array_and_utf8_byte_indexes()
     {
         Assert.Equal(3L, Evaluate("[1, 2, 3][-1]"));
-        ExprProgram stringFetch = Program(
-            [
-                (ExprOpcode.OpPush, 0),
-                (ExprOpcode.OpPush, 1),
-                (ExprOpcode.OpFetch, 0),
-            ],
-            ["é", 0L]);
-        Assert.Equal((byte)0xC3, Run(stringFetch));
+        var environment = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["value"] = "é",
+        };
+        Assert.Equal(
+            (byte)0xC3,
+            Evaluate(
+                "value[0]",
+                environment,
+                ExprConfiguration.Default.AllowUndefinedVariables().WithOptimization(false)));
     }
 
     [Fact]
@@ -99,10 +78,6 @@ public sealed class OpcodeExecutionTests
                 configuration: ExprConfiguration.Default
                     .WithOptimization(false)
                     .WithExpectedType(ExprTypes.Integer)));
-        ExprProgram booleanCast = Program(
-            [(ExprOpcode.OpNil, 0), (ExprOpcode.OpCast, (int)ExprCastKind.Boolean)],
-            []);
-        Assert.False((bool)Run(booleanCast)!);
     }
 
     [Fact]
@@ -119,32 +94,7 @@ public sealed class OpcodeExecutionTests
     [Fact]
     public void Signed_minimum_modulo_negative_one_matches_go_without_overflow()
     {
-        ExprProgram program = Program(
-            [
-                (ExprOpcode.OpPush, 0),
-                (ExprOpcode.OpPush, 1),
-                (ExprOpcode.OpModulo, 0),
-            ],
-            [long.MinValue, -1L]);
-
-        Assert.Equal(0L, Run(program));
-    }
-
-    [Fact]
-    public void Time_and_duration_arithmetic_matches_upstream_runtime_helpers()
-    {
-        var instant = new DateTimeOffset(2024, 1, 2, 3, 4, 5, TimeSpan.Zero);
-        TimeSpan duration = TimeSpan.FromHours(2);
-
-        Assert.Equal(
-            instant + duration,
-            Run(BinaryProgram(instant, duration, ExprOpcode.OpAdd)));
-        Assert.Equal(
-            duration,
-            Run(BinaryProgram(instant + duration, instant, ExprOpcode.OpSubtract)));
-        Assert.Equal(
-            duration + duration,
-            Run(BinaryProgram(duration, 2L, ExprOpcode.OpMultiply)));
+        Assert.Equal(0L, Evaluate("(-9223372036854775807 - 1) % -1"));
     }
 
     [Fact]
@@ -214,27 +164,6 @@ public sealed class OpcodeExecutionTests
             program,
             environment,
             cancellationToken: TestContext.Current.CancellationToken);
-
-    private static ExprProgram Program(
-        IReadOnlyList<(ExprOpcode Opcode, int Argument)> instructions,
-        IReadOnlyList<object?> constants)
-    {
-        SyntaxTree tree = new SyntaxParser().Parse("0");
-        return new ExprProgram(
-            tree,
-            instructions.Select(item => new ExprInstruction(
-                item.Opcode,
-                item.Argument,
-                new SourceLocation(0, 1))),
-            constants,
-            [],
-            0);
-    }
-
-    private static ExprProgram BinaryProgram(object? left, object? right, ExprOpcode opcode) =>
-        Program(
-            [(ExprOpcode.OpPush, 0), (ExprOpcode.OpPush, 1), (opcode, 0)],
-            [left, right]);
 
     private sealed record RootEnvironment(long Value)
     {

@@ -120,6 +120,47 @@ public sealed class BuiltinValueTests
         Assert.Throws<ExprRuntimeException>(() => Invoke("bitnot", "1"));
     }
 
+    [Fact]
+    public void Scalar_functions_cover_public_clr_numeric_and_type_families()
+    {
+        object[] values =
+        [
+            (sbyte)-2, (byte)2, (short)-2, (ushort)2, -2, 2U, -2L, 2UL,
+            (nint)(-2), (nuint)2, (Half)(-2), -2F, -2D,
+        ];
+        foreach (object value in values)
+        {
+            _ = Invoke("abs", value);
+        }
+
+        Assert.Equal("uint", Invoke("type", 1U));
+        Assert.Equal("float", Invoke("type", (Half)1));
+        Assert.Equal("time.Time", Invoke("type", DateTimeOffset.UnixEpoch));
+        Assert.Equal("time.Duration", Invoke("type", TimeSpan.Zero));
+        Assert.Equal("func", Invoke("type", new Func<int>(static () => 1)));
+        Assert.Equal("array", Invoke("type", new[] { 1 }));
+        Assert.Equal("map", Invoke("type", new Dictionary<string, int>()));
+        Assert.Equal(typeof(object).FullName, Invoke("type", new object()));
+    }
+
+    [Fact]
+    public void Public_builtin_failures_preserve_conversion_and_budget_contracts()
+    {
+        Assert.Throws<ExprRuntimeException>(() => Invoke("len", 1L));
+        Assert.Throws<ExprRuntimeException>(() => Invoke("ceil", "1"));
+        Assert.Throws<ExprRuntimeException>(() => Invoke("int", new object()));
+        Assert.Throws<ExprRuntimeException>(() => Invoke("int", OverflowingEnum.Value));
+        Assert.Throws<ExprRuntimeException>(() => Invoke("float", true));
+
+        var bounded = new ExprBuiltinLibrary(new ExprBuiltinOptions { MaximumAllocation = 1 });
+        Assert.Throws<ExprRuntimeException>(() => bounded.Get("string").Invoke(["long"]));
+    }
+
     private object? Invoke(string name, params object?[] arguments) => library.Get(name).Invoke(arguments).Value;
+
+    private enum OverflowingEnum : ulong
+    {
+        Value = ulong.MaxValue,
+    }
 }
 #pragma warning restore CA1861

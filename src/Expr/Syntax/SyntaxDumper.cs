@@ -12,10 +12,26 @@ public sealed record SyntaxDumperOptions
     public bool IncludeLocations { get; init; }
 
     /// <summary>Gets or initializes the maximum nested syntax depth.</summary>
-    public int MaximumDepth { get; init; } = 1_024;
+    public int MaximumDepth
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 1_024;
 
     /// <summary>Gets or initializes the maximum number of visited nodes.</summary>
-    public int MaximumNodeCount { get; init; } = 100_000;
+    public int MaximumNodeCount
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+            field = value;
+        }
+    } = 100_000;
 }
 
 /// <summary>Produces deterministic, reflection-free diagnostic syntax-tree dumps.</summary>
@@ -36,23 +52,12 @@ public static class SyntaxDumper
         private readonly bool includeLocations;
         private readonly int maximumDepth;
         private readonly int maximumNodeCount;
-        private readonly HashSet<SyntaxNode> path = new(ReferenceEqualityComparer.Instance);
         private readonly StringBuilder builder = new();
         private int nodeCount;
 
         internal Dumper(SyntaxDumperOptions options)
         {
             ArgumentNullException.ThrowIfNull(options);
-            if (options.MaximumDepth <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(options), "Maximum depth must be positive.");
-            }
-
-            if (options.MaximumNodeCount <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(options), "Maximum node count must be positive.");
-            }
-
             includeLocations = options.IncludeLocations;
             maximumDepth = options.MaximumDepth;
             maximumNodeCount = options.MaximumNodeCount;
@@ -67,120 +72,113 @@ public static class SyntaxDumper
         private void AppendNode(SyntaxNode node, int depth)
         {
             Enter(node, depth);
-            try
+            Indent(depth);
+            builder.Append(node.GetType().Name);
+            builder.AppendLine(" {");
+            if (includeLocations)
             {
-                Indent(depth);
-                builder.Append(node.GetType().Name);
-                builder.AppendLine(" {");
-                if (includeLocations)
-                {
-                    AppendScalar(depth + 1, "Location", $"{node.Location.Start}..{node.Location.End}", quote: false);
-                }
-
-                switch (node)
-                {
-                    case NilNode:
-                        break;
-                    case IdentifierNode identifier:
-                        AppendScalar(depth + 1, "Name", identifier.Name);
-                        break;
-                    case IntegerNode integer:
-                        AppendScalar(depth + 1, "Value", integer.Value.ToString(CultureInfo.InvariantCulture), quote: false);
-                        break;
-                    case FloatNode number:
-                        AppendScalar(depth + 1, "Value", number.Value.ToString("R", CultureInfo.InvariantCulture), quote: false);
-                        break;
-                    case BooleanNode boolean:
-                        AppendScalar(depth + 1, "Value", boolean.Value ? "true" : "false", quote: false);
-                        break;
-                    case StringNode text:
-                        AppendScalar(depth + 1, "Value", text.Value);
-                        break;
-                    case BytesNode bytes:
-                        AppendScalar(depth + 1, "Value", Convert.ToHexString(bytes.Value.Span), quote: false);
-                        break;
-                    case ConstantNode constant:
-                        AppendScalar(depth + 1, "Value", FormatConstant(constant.Value), quote: false);
-                        break;
-                    case UnaryNode unary:
-                        AppendScalar(depth + 1, "Operator", unary.Operator);
-                        AppendChild(depth + 1, "Operand", unary.Operand);
-                        break;
-                    case BinaryNode binary:
-                        AppendScalar(depth + 1, "Operator", binary.Operator);
-                        AppendChild(depth + 1, "Left", binary.Left);
-                        AppendChild(depth + 1, "Right", binary.Right);
-                        break;
-                    case ChainNode chain:
-                        AppendChild(depth + 1, "Expression", chain.Expression);
-                        break;
-                    case MemberNode member:
-                        AppendChild(depth + 1, "Target", member.Target);
-                        AppendChild(depth + 1, "Property", member.Property);
-                        AppendScalar(depth + 1, "Optional", member.Optional ? "true" : "false", quote: false);
-                        AppendScalar(depth + 1, "IsMethod", member.IsMethod ? "true" : "false", quote: false);
-                        break;
-                    case SliceNode slice:
-                        AppendChild(depth + 1, "Target", slice.Target);
-                        AppendOptionalChild(depth + 1, "From", slice.From);
-                        AppendOptionalChild(depth + 1, "To", slice.To);
-                        break;
-                    case CallNode call:
-                        AppendChild(depth + 1, "Callee", call.Callee);
-                        AppendChildren(depth + 1, "Arguments", call.Arguments);
-                        break;
-                    case BuiltinNode builtin:
-                        AppendScalar(depth + 1, "Name", builtin.Name);
-                        AppendChildren(depth + 1, "Arguments", builtin.Arguments);
-                        AppendScalar(depth + 1, "Throws", builtin.Throws ? "true" : "false", quote: false);
-                        AppendOptionalChild(depth + 1, "Map", builtin.Map);
-                        AppendScalar(
-                            depth + 1,
-                            "Threshold",
-                            builtin.Threshold?.ToString(CultureInfo.InvariantCulture) ?? "null",
-                            quote: false);
-                        break;
-                    case PredicateNode predicate:
-                        AppendChild(depth + 1, "Body", predicate.Body);
-                        break;
-                    case PointerNode pointer:
-                        AppendScalar(depth + 1, "Name", pointer.Name);
-                        break;
-                    case ConditionalNode conditional:
-                        AppendChild(depth + 1, "Condition", conditional.Condition);
-                        AppendChild(depth + 1, "WhenTrue", conditional.WhenTrue);
-                        AppendChild(depth + 1, "WhenFalse", conditional.WhenFalse);
-                        AppendScalar(depth + 1, "IsTernary", conditional.IsTernary ? "true" : "false", quote: false);
-                        break;
-                    case VariableDeclaratorNode variable:
-                        AppendScalar(depth + 1, "Name", variable.Name);
-                        AppendChild(depth + 1, "Value", variable.Value);
-                        AppendChild(depth + 1, "Body", variable.Body);
-                        break;
-                    case SequenceNode sequence:
-                        AppendChildren(depth + 1, "Expressions", sequence.Expressions);
-                        break;
-                    case ArrayNode array:
-                        AppendChildren(depth + 1, "Elements", array.Elements);
-                        break;
-                    case MapNode map:
-                        AppendChildren(depth + 1, "Pairs", map.Pairs);
-                        break;
-                    case PairNode pair:
-                        AppendChild(depth + 1, "Key", pair.Key);
-                        AppendChild(depth + 1, "Value", pair.Value);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(node), node.GetType(), "Unknown syntax node type.");
-                }
-
-                Indent(depth);
-                builder.Append('}');
+                AppendScalar(depth + 1, "Location", $"{node.Location.Start}..{node.Location.End}", quote: false);
             }
-            finally
+
+            switch (node)
             {
-                _ = path.Remove(node);
+                case NilNode:
+                    break;
+                case IdentifierNode identifier:
+                    AppendScalar(depth + 1, "Name", identifier.Name);
+                    break;
+                case IntegerNode integer:
+                    AppendScalar(depth + 1, "Value", integer.Value.ToString(CultureInfo.InvariantCulture), quote: false);
+                    break;
+                case FloatNode number:
+                    AppendScalar(depth + 1, "Value", number.Value.ToString("R", CultureInfo.InvariantCulture), quote: false);
+                    break;
+                case BooleanNode boolean:
+                    AppendScalar(depth + 1, "Value", boolean.Value ? "true" : "false", quote: false);
+                    break;
+                case StringNode text:
+                    AppendScalar(depth + 1, "Value", text.Value);
+                    break;
+                case BytesNode bytes:
+                    AppendScalar(depth + 1, "Value", Convert.ToHexString(bytes.Value.Span), quote: false);
+                    break;
+                case ConstantNode constant:
+                    AppendScalar(depth + 1, "Value", FormatConstant(constant.Value), quote: false);
+                    break;
+                case UnaryNode unary:
+                    AppendScalar(depth + 1, "Operator", unary.Operator);
+                    AppendChild(depth + 1, "Operand", unary.Operand);
+                    break;
+                case BinaryNode binary:
+                    AppendScalar(depth + 1, "Operator", binary.Operator);
+                    AppendChild(depth + 1, "Left", binary.Left);
+                    AppendChild(depth + 1, "Right", binary.Right);
+                    break;
+                case ChainNode chain:
+                    AppendChild(depth + 1, "Expression", chain.Expression);
+                    break;
+                case MemberNode member:
+                    AppendChild(depth + 1, "Target", member.Target);
+                    AppendChild(depth + 1, "Property", member.Property);
+                    AppendScalar(depth + 1, "Optional", member.Optional ? "true" : "false", quote: false);
+                    AppendScalar(depth + 1, "IsMethod", member.IsMethod ? "true" : "false", quote: false);
+                    break;
+                case SliceNode slice:
+                    AppendChild(depth + 1, "Target", slice.Target);
+                    AppendOptionalChild(depth + 1, "From", slice.From);
+                    AppendOptionalChild(depth + 1, "To", slice.To);
+                    break;
+                case CallNode call:
+                    AppendChild(depth + 1, "Callee", call.Callee);
+                    AppendChildren(depth + 1, "Arguments", call.Arguments);
+                    break;
+                case BuiltinNode builtin:
+                    AppendScalar(depth + 1, "Name", builtin.Name);
+                    AppendChildren(depth + 1, "Arguments", builtin.Arguments);
+                    AppendScalar(depth + 1, "Throws", builtin.Throws ? "true" : "false", quote: false);
+                    AppendOptionalChild(depth + 1, "Map", builtin.Map);
+                    AppendScalar(
+                        depth + 1,
+                        "Threshold",
+                        builtin.Threshold?.ToString(CultureInfo.InvariantCulture) ?? "null",
+                        quote: false);
+                    break;
+                case PredicateNode predicate:
+                    AppendChild(depth + 1, "Body", predicate.Body);
+                    break;
+                case PointerNode pointer:
+                    AppendScalar(depth + 1, "Name", pointer.Name);
+                    break;
+                case ConditionalNode conditional:
+                    AppendChild(depth + 1, "Condition", conditional.Condition);
+                    AppendChild(depth + 1, "WhenTrue", conditional.WhenTrue);
+                    AppendChild(depth + 1, "WhenFalse", conditional.WhenFalse);
+                    AppendScalar(depth + 1, "IsTernary", conditional.IsTernary ? "true" : "false", quote: false);
+                    break;
+                case VariableDeclaratorNode variable:
+                    AppendScalar(depth + 1, "Name", variable.Name);
+                    AppendChild(depth + 1, "Value", variable.Value);
+                    AppendChild(depth + 1, "Body", variable.Body);
+                    break;
+                case SequenceNode sequence:
+                    AppendChildren(depth + 1, "Expressions", sequence.Expressions);
+                    break;
+                case ArrayNode array:
+                    AppendChildren(depth + 1, "Elements", array.Elements);
+                    break;
+                case MapNode map:
+                    AppendChildren(depth + 1, "Pairs", map.Pairs);
+                    break;
+                case PairNode pair:
+                    AppendChild(depth + 1, "Key", pair.Key);
+                    AppendChild(depth + 1, "Value", pair.Value);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(node), node.GetType(), "Unknown syntax node type.");
             }
+
+            Indent(depth);
+            builder.Append('}');
         }
 
         private void AppendChild(int depth, string name, SyntaxNode node)
@@ -297,10 +295,6 @@ public static class SyntaxDumper
                     $"Syntax tree exceeds the configured dump node limit of {maximumNodeCount}.");
             }
 
-            if (!path.Add(node))
-            {
-                throw new InvalidOperationException("Syntax tree contains a reference cycle.");
-            }
         }
 
         private void Indent(int depth) => builder.Append(' ', depth * 2);

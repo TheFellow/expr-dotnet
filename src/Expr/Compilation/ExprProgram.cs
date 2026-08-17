@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using Expr.Execution;
 using Expr.Runtime;
 using Expr.Syntax;
 
@@ -12,16 +13,7 @@ namespace Expr.Compilation;
 /// <summary>Contains immutable bytecode produced from a checked Expr syntax tree.</summary>
 public sealed class ExprProgram
 {
-
-    /// <summary>Initializes a program from an instruction stream and its immutable metadata.</summary>
-    /// <param name="syntaxTree">The checked source syntax.</param>
-    /// <param name="instructions">The ordered instructions.</param>
-    /// <param name="constants">The constant table.</param>
-    /// <param name="functions">The known-function table.</param>
-    /// <param name="variableCount">The required local-variable slot count.</param>
-    /// <param name="variableNames">Optional variable debug names by slot.</param>
-    /// <param name="functionNames">Optional function debug names by table index.</param>
-    /// <param name="profilePoints">Optional profiling metadata in identifier order.</param>
+    /// <inheritdoc/>
     public ExprProgram(
         SyntaxTree syntaxTree,
         IEnumerable<ExprInstruction> instructions,
@@ -31,6 +23,29 @@ public sealed class ExprProgram
         IReadOnlyDictionary<int, string>? variableNames = null,
         IReadOnlyDictionary<int, string>? functionNames = null,
         IEnumerable<ExprProfilePoint>? profilePoints = null)
+        : this(
+            syntaxTree,
+            instructions,
+            constants,
+            functions,
+            variableCount,
+            variableNames,
+            functionNames,
+            profilePoints,
+            validate: true)
+    {
+    }
+
+    private ExprProgram(
+        SyntaxTree syntaxTree,
+        IEnumerable<ExprInstruction> instructions,
+        IEnumerable<object?> constants,
+        IEnumerable<ExprFunction> functions,
+        int variableCount,
+        IReadOnlyDictionary<int, string>? variableNames,
+        IReadOnlyDictionary<int, string>? functionNames,
+        IEnumerable<ExprProfilePoint>? profilePoints,
+        bool validate)
     {
         SyntaxTree = syntaxTree ?? throw new ArgumentNullException(nameof(syntaxTree));
         ArgumentNullException.ThrowIfNull(instructions);
@@ -51,7 +66,32 @@ public sealed class ExprProgram
             variableNames is null ? [] : new Dictionary<int, string>(variableNames));
         FunctionNames = new ReadOnlyDictionary<int, string>(
             functionNames is null ? [] : new Dictionary<int, string>(functionNames));
+
+        if (validate)
+        {
+            ExprProgramValidator.Validate(this);
+        }
     }
+
+    internal static ExprProgram CreateCompiled(
+        SyntaxTree syntaxTree,
+        IEnumerable<ExprInstruction> instructions,
+        IEnumerable<object?> constants,
+        IEnumerable<ExprFunction> functions,
+        int variableCount,
+        IReadOnlyDictionary<int, string>? variableNames,
+        IReadOnlyDictionary<int, string>? functionNames,
+        IEnumerable<ExprProfilePoint>? profilePoints) =>
+        new(
+            syntaxTree,
+            instructions,
+            constants,
+            functions,
+            variableCount,
+            variableNames,
+            functionNames,
+            profilePoints,
+            validate: false);
 
     /// <summary>Gets the checked syntax tree from which this program was compiled.</summary>
     public SyntaxTree SyntaxTree { get; }
