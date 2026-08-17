@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Expr.Compilation;
+using Expr.Execution;
 using Expr.Syntax;
 using Xunit;
 
@@ -50,5 +51,16 @@ public sealed class OpcodeAndProgramTests
         var stored = Assert.IsType<ReadOnlyMemory<byte>>(Assert.Single(program.Constants));
         Assert.Equal(new byte[] { 1, 2, 3 }, stored.ToArray());
         Assert.Throws<NotSupportedException>(() => ((IList<ExprInstruction>)program.Instructions).Clear());
+    }
+
+    [Fact]
+    public void Public_program_constructor_rejects_invalid_bytecode_immediately()
+    {
+        var tree = new SyntaxTree(new NilNode(default), new SourceText(string.Empty));
+
+        _ = Assert.Throws<ExprExecutionException>(() =>
+            new ExprProgram(tree, [new ExprInstruction(ExprOpcode.OpInvalid, 0, default)], [], [], 0));
+        _ = Assert.Throws<ExprExecutionException>(() =>
+            new ExprProgram(tree, [], [], [], 0));
     }
 }

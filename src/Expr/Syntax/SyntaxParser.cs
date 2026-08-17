@@ -87,10 +87,21 @@ public sealed record SyntaxTree
     }
 
     /// <summary>Gets the root expression.</summary>
-    public SyntaxNode Root { get; }
+    public SyntaxNode Root
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     /// <summary>Gets the original source text.</summary>
-    public SourceText Source { get; }
+    public SourceText Source
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Deconstructs the syntax tree.</summary>
+    public void Deconstruct(out SyntaxNode root, out SourceText source) => (root, source) = (Root, Source);
 }
 
 /// <summary>Parses Expr tokens with the same Pratt grammar and precedences as expr-lang/expr.</summary>

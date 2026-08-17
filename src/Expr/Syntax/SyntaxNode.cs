@@ -321,7 +321,8 @@ public sealed record BuiltinNode : SyntaxNode
     {
     }
 
-    internal BuiltinNode(
+    /// <summary>Initializes a built-in call node with optimizer metadata.</summary>
+    public BuiltinNode(
         string name,
         IEnumerable<SyntaxNode> arguments,
         SourceLocation location,
@@ -334,6 +335,21 @@ public sealed record BuiltinNode : SyntaxNode
         if (threshold <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(threshold), "An optimizer threshold must be positive.");
+        }
+
+        if (throws && name is not ("find" or "findLast"))
+        {
+            throw new ArgumentException("Only find built-ins can carry throwing lookup metadata.", nameof(throws));
+        }
+
+        if (map is not null && name is not ("filter" or "find" or "findLast"))
+        {
+            throw new ArgumentException("Only filter and find built-ins can carry a mapped result.", nameof(map));
+        }
+
+        if (threshold is not null && name is not "count")
+        {
+            throw new ArgumentException("Only count can carry an optimizer threshold.", nameof(threshold));
         }
 
         Name = name;

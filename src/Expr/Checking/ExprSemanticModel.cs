@@ -29,6 +29,10 @@ public enum ExprMemberBindingKind
 /// <summary>Describes a statically selected member without mutating its syntax node.</summary>
 public sealed record ExprMemberBinding
 {
+    private string name = string.Empty;
+    private ExprMemberBindingKind kind;
+    private MemberInfo? member;
+
     /// <summary>Initializes a member binding.</summary>
     public ExprMemberBinding(string name, ExprMemberBindingKind kind, MemberInfo? member = null)
     {
@@ -48,19 +52,67 @@ public sealed record ExprMemberBinding
             throw new ArgumentException("Only CLR member bindings can carry reflection metadata.", nameof(member));
         }
 
-        Name = name;
-        Kind = kind;
-        Member = member;
+        Validate(name, kind, member);
+        this.name = name;
+        this.kind = kind;
+        this.member = member;
     }
 
     /// <summary>Gets the expression-visible name.</summary>
-    public string Name { get; }
+    public string Name
+    {
+        get => name;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            name = value;
+        }
+    }
 
     /// <summary>Gets the binding kind.</summary>
-    public ExprMemberBindingKind Kind { get; }
+    public ExprMemberBindingKind Kind
+    {
+        get => kind;
+        init
+        {
+            Validate(name, value, member);
+            kind = value;
+        }
+    }
 
     /// <summary>Gets the cached CLR member, when reflection supplied the binding.</summary>
-    public MemberInfo? Member { get; }
+    public MemberInfo? Member
+    {
+        get => member;
+        init
+        {
+            Validate(name, kind, value);
+            member = value;
+        }
+    }
+
+    /// <summary>Deconstructs the binding.</summary>
+    public void Deconstruct(out string name, out ExprMemberBindingKind kind, out MemberInfo? member) =>
+        (name, kind, member) = (Name, Kind, Member);
+
+    private static void Validate(string name, ExprMemberBindingKind kind, MemberInfo? member)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown member binding kind.");
+        }
+
+        if (kind is ExprMemberBindingKind.ClrMember or ExprMemberBindingKind.ClrMethod && member is null)
+        {
+            throw new ArgumentException("CLR member bindings require reflection metadata.", nameof(member));
+        }
+
+        if (kind is not (ExprMemberBindingKind.ClrMember or ExprMemberBindingKind.ClrMethod) && member is not null)
+        {
+            throw new ArgumentException("Only CLR member bindings can carry reflection metadata.", nameof(member));
+        }
+    }
 }
 
 /// <summary>Marks a value that must be unwrapped through <see cref="Patching.IExprValueProvider"/> before use.</summary>
@@ -71,7 +123,14 @@ public sealed record ExprValueConversionBinding
         ValueType = valueType ?? throw new ArgumentNullException(nameof(valueType));
 
     /// <summary>Gets the statically declared unwrapped type.</summary>
-    public ExprTypeDescriptor ValueType { get; }
+    public ExprTypeDescriptor ValueType
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    /// <summary>Deconstructs the binding.</summary>
+    public void Deconstruct(out ExprTypeDescriptor valueType) => valueType = ValueType;
 }
 
 /// <summary>Contains static information inferred for one syntax node.</summary>
@@ -106,19 +165,67 @@ public sealed record ExprNodeSemantics
     }
 
     /// <summary>Gets the inferred result type.</summary>
-    public ExprTypeDescriptor Type { get; }
+    public ExprTypeDescriptor Type
+    {
+        get;
+        init => field = value ?? throw new ArgumentNullException(nameof(value));
+    }
 
     /// <summary>Gets the selected function.</summary>
-    public ExprFunction? Function { get; }
+    public ExprFunction? Function
+    {
+        get;
+        init
+        {
+            ValidateSelection(value, Overload);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the selected function overload.</summary>
-    public ExprFunctionOverload? Overload { get; }
+    public ExprFunctionOverload? Overload
+    {
+        get;
+        init
+        {
+            ValidateSelection(Function, value);
+            field = value;
+        }
+    }
 
     /// <summary>Gets the selected member binding.</summary>
-    public ExprMemberBinding? Member { get; }
+    public ExprMemberBinding? Member { get; init; }
 
     /// <summary>Gets the configured host-value conversion.</summary>
-    public ExprValueConversionBinding? ValueConversion { get; }
+    public ExprValueConversionBinding? ValueConversion { get; init; }
+
+    /// <summary>Deconstructs the inferred semantics.</summary>
+    public void Deconstruct(
+        out ExprTypeDescriptor type,
+        out ExprFunction? function,
+        out ExprFunctionOverload? overload,
+        out ExprMemberBinding? member,
+        out ExprValueConversionBinding? valueConversion) =>
+        (type, function, overload, member, valueConversion) =
+            (Type, Function, Overload, Member, ValueConversion);
+
+    private static void ValidateSelection(ExprFunction? function, ExprFunctionOverload? overload)
+    {
+        if (overload is null)
+        {
+            return;
+        }
+
+        if (function is null)
+        {
+            throw new ArgumentException("An overload cannot be selected without a function.", nameof(overload));
+        }
+
+        if (!function.Overloads.Contains(overload))
+        {
+            throw new ArgumentException("The selected overload does not belong to the selected function.", nameof(overload));
+        }
+    }
 }
 
 /// <summary>Provides immutable, reference-identity semantic annotations over an immutable syntax tree.</summary>

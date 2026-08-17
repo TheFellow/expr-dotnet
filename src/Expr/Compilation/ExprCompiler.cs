@@ -80,7 +80,7 @@ public static class ExprCompiler
                 OptimizeJumps();
             }
 
-            return new ExprProgram(
+            return ExprProgram.CreateCompiled(
                 semanticModel.SyntaxTree,
                 instructions.Select(static instruction => instruction.ToImmutable()),
                 constants,
