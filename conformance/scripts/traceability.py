@@ -139,7 +139,7 @@ CORE_TEST_FAMILIES: dict[str, tuple[dict[str, str], ...]] = {
         dotnet_test("tests/Expr.Tests/Execution/EvaluatorTests.cs", "Profiling_is_per_invocation_and_does_not_mutate_the_program"),
     ),
     "vm/program_test.go": (
-        dotnet_test("tests/Expr.Tests/Compilation/OpcodeAndProgramTests.cs", "Disassembler_recognizes_every_opcode"),
+        dotnet_test("tests/Expr.Tests/Compilation/OpcodeAndProgramTests.cs", "Compiler_output_disassembles_without_unknown_operands"),
     ),
     "vm/runtime/helpers_test.go": (dotnet_test("tests/Expr.Tests/Runtime/ValueTests.cs"),),
     "vm/runtime/runtime_test.go": (
@@ -176,7 +176,7 @@ add_expr_evidence(
 add_expr_evidence(
     ("TestExpr_calls_with_nil", "TestExpr_call_float_arg_func_with_int", "TestFunction"),
     dotnet_test("tests/Expr.Tests/Runtime/FunctionTests.cs"),
-    dotnet_test("tests/Expr.Tests/Execution/OpcodeExecutionTests.cs", "Direct_fast_and_dynamic_call_opcodes_execute_delegates"),
+    dotnet_test("tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs", "Public_dynamic_calls_adapt_real_host_delegate_parameters"),
 )
 add_expr_evidence(
     ("TestPatch",),
@@ -671,7 +671,7 @@ def classify(row: dict[str, Any], corpus: dict[tuple[str, str], list[str]]) -> d
                     "anchor": "`time.Duration` values use `TimeSpan`",
                 },
                 dotnet_test("tests/Expr.Tests/Builtins/BuiltinSerializationAndTimeTests.cs"),
-                dotnet_test("tests/Expr.Tests/Execution/OpcodeExecutionTests.cs", "Time_and_duration_arithmetic_matches_upstream_runtime_helpers"),
+                dotnet_test("tests/Expr.Tests/Facade/PublicApiBehaviorCoverageTests.cs", "Public_dynamic_evaluation_supports_temporal_arithmetic_in_both_operand_orders"),
             ],
             note="Expression behavior is tested through the documented TimeSpan, DateTimeOffset, and TimeZoneInfo mappings.",
         )
