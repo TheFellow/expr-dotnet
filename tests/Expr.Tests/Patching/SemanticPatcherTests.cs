@@ -133,6 +133,17 @@ public sealed class SemanticPatcherTests
         Assert.Contains("does not exist", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Host_patcher_that_never_converges_is_rejected()
+    {
+        ExprConfiguration configuration = ExprConfiguration.Default.WithPatcher(new NonconvergingPatcher());
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            Check("1", configuration));
+
+        Assert.Contains("did not converge", exception.Message, StringComparison.Ordinal);
+    }
+
     [RequiresUnreferencedCode("ExprChecker exposes reflection-backed CLR member checking.")]
     private static ExprSemanticModel Check(string expression, ExprConfiguration configuration) =>
         new ExprChecker().Check(new SyntaxParser().Parse(expression), configuration);
@@ -157,4 +168,12 @@ public sealed class SemanticPatcherTests
     }
 
     private sealed record Box(string Value);
+
+    private sealed class NonconvergingPatcher : IExprSemanticPatcher
+    {
+        public SyntaxNode Apply(
+            SyntaxNode root,
+            ExprSemanticModel model,
+            ExprConfiguration configuration) => root with { };
+    }
 }
